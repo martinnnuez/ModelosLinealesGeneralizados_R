@@ -1,1 +1,2 @@
-# ModelosLinealesGeneralizados_R
+# Modelos Lineales Generalizados en R
+Aplicaciones en R.
