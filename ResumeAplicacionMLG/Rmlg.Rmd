@@ -1,0 +1,1337 @@
+---
+title: "MLG"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+# Librerias
+library(boot);
+library(car);
+library(GGally);
+library(ggplot2);
+library(MASS);
+library(dplyr)
+```
+
+
+# Exploratory data analysis
+*  Any analysis of data should begin with a consideration of each variable separately, 
+both to check on data quality (for example, are the values plausible?) and to help with model formulation:
+  1. What is the scale of measurement? Is it continuous or categorical? If it is categorical how many categories does it have and are they nominal or ordinal?
+  2. What is the shape of the distribution? This can be examined using frequency tables, dot plots, histograms and other graphical methods.
+  3. How is it associated with other variables? Cross tabulations for categorical variables, scatter plots for continuous variables, side-by-side box plots for continuous scale measurements grouped according to the factor levels of a categorical variable, and other such summaries can help to identify patterns of association. For example, do the points on a scatter plot suggest
+linear or non-linear relationships? Do the group means increase or decrease
+consistently with an ordinal variable defining the groups?
+
+```{r}
+# Diagrama de dispersion para datos continuos
+ggpairs(concreto) # Hace varios graficos juntos; ggpairs(datos)
+plot(peso,porosidad) # Normal
+
+# Binomial
+plot(lndosis,prop, xlab="ln dosis", ylab="proporcion de individuos muertos") # Binomial
+plot(ck,si/(si+no), xlab="nivel de creatinina quinasa", ylab="proporcion de ataque cardiaco")#Bin
+ggp <- ggplot();
+ggp <- ggp + geom_point(aes(x=raza, y=prop, color=as.factor(azt))); ggp #Binomial con 2 covariables
+plot(tipo,tiempo) #boxplots
+
+# Binomial correcion tendencia cuadratica con logaritmo
+ggp <- ggplot();
+ggp <- ggp + geom_point(data=datos, aes(x=dosis, y=prop, color=as.factor(sexo))); ggp
+# Se ve en los datos una tendencia cuadratica, la cual se intetara corregir a partir de la transformacion de los datos.
+log2d <- log(dosis, 2);
+datos$log2d <- log2d;
+ggp <- ggplot();
+ggp <- ggp + geom_point(data=datos, aes(x=log2d, y=prop, color=as.factor(sexo))); ggp
+#De esta forma tomando el log2 de la dosis se ve una relacion lineal entre las proporsiones y la dosis.
+
+# Poisson:
+plot(1980+t, casos); #Poisson
+
+
+```
+
+# Model formulation and parameter estimation
+  The models described in this book involve a single response variable Y and usually several explanatory variables. Knowledge of the context in which the data were obtained, including the substantive questions of interest, theoretical relationships among the variables, the study design and results of the exploratory data analysis can all be used to help formulate a model. The
+model has two components:
+  1. Probability distribution of Y , for example, Y ∼ N(μ, σ2).
+  2. Equation linking the expected value of Y with a linear combination of the explanatory variables, for example, E(Y) = α + βx or ln[E(Y )] = β0 + β1 sin(αx).
+For generalized linear models the probability distributions all belong to the exponential family of distributions, which includes the Normal, binomial, Poisson and many other distributions. The equation in the second part of the model has the general form
+g[E(Y )] = β0 + β1x1 + . . . + βmxm where the part β0 + β1x1 + . . . + βmxm is called the linear component.
+The most commonly used estimation methods are maximum likelihood and least squares.
+
+## Notas importantes:
+### Especificacion del modelo:
+1- Componente aleatoria: 
+La variable aleatoria Y representa:
+Y= Cantidad de estacas sobrevivientes en 240 ensayos independientes.
+Es una muestra aleatoria con distribucion B(n,p) de parametros n y p, donde n es el numero total de ensayos independientes y p la probabilidad del exito.
+Es decir que las componentes de Y son independientes e identicamente distribuidas con distribucion B(n,p).
+Ademas sabemos que esta distribucion pertenece a la familia exponencial en la forma canonica.
+
+2- Componente sistematico:
+Las covariables medidas forman un predictor lineal. 
+n = sumatoria desde i=1 hasta n de las xi*bj.
+
+3- Funcion de enlace:
+Es la funcion que relaciona la componente aleatoria con la componente sistematica. 
+En este caso se toma como funcion de enlace a la funcion logit(p), que ademas es la funcion de enlace canonica.
+logit(p)=log(p/1-p)=n= sumatoria xi*bj=
+
+### Prueba de hipotesis sobre los beta
+La prueba empleada por el R en este caso es equivalente al test de Wald que utiliza el comportamiento de l(b) en el EMV de b. La varianza del b estimado depende de la curvatura de l(b) en b estimado.
+En R se muestra el valor observado de Z y el correspondiente p valor basado en la distribucion N(0,1), que es equivalente a la raiz de Wald.
+
+Cuando el phi es desconocido se hace una prueba T.
+
+* Prueba de hipotesis sobre los coeficientes Pr(>|t|):
+  + Ho = B = 0
+  + H1 = B != 0 
+* Ambos coeficientes son distintos de 0. 
+
+### Residuos en la salida del fit glm
+```{r}
+# Nota: 
+all(fitglm$y - fitglm$fitted.values == fitglm$residuals)
+# los residuos del fit son los crudos yi - ui
+
+# Los otros residuos son los estudentizados
+all(glm.diag(fitglm)$rd == fitglm$residuals)
+```
+
+### Adecuacion del modelo con deviance escalada:
+```{r}
+adecuacionPval <- function(fitglm) {
+	# Ho: El modelo es adecuado
+	return(pchisq(fitglm$deviance/summary(fitglm)$dispersion, fitglm$df.residual, lower.tail=F));
+}
+adecuacionPval(fitglm);
+```
+
+* Prueba de hipotesis sobre la adecuacion del modelo con deviance escalada:
+  + Ho = El modelo es adecuado. 
+  + H1 = Un modelo mas general es adecuado. 
+* La deviance escalada es el estadistico de cociente de verosimilitud para testear la hipotesis nula de que el modelo es adecuado contra la alternativa de que un modelo mas general es el adecuado.
+
+* La muestra no reune evidencias suficientes para rechazar la hipotesis nula a un nivel de significancia del 5% por lo que se concluye que el modelo en estudio es adecuado. p valor de 0.4334701 el modelo resulta adecuado.
+
+* La muestra reune evidencias suficientes para rechazar la hipotesis nula a un nivel de significancia del 5% por lo que se concluye que el modelo en estudio no es adecuado. p valor de 0.04334701 un modelo mas general es adecuado.
+
+* Para poisson y binomial es lo mismo ver adecuacion del modelo tanto con deviance como con deviance escalada. Para las distribuciones poisson y binomial (este caso) la deviance y deviance escalada coinciden ya que el phi es = 1 , por lo que las pruebas son identicas. El caso valido es el de la deviance escalada.
+
+### Comparacion de distintos ajustes con el AIC y BIC:
+```{r}
+AIC(fit1,fit2,fit3)
+BIC(fit1,fit2,fit3)
+```
+* Elegimos el fit 3 por poseer el menor AIC.
+
+### Comparacion modelos encajados: Test de cociente de verosimilitud, diferencia de deviance entre modelos ajustados:
+```{r}
+anova(fit1,fit3,test="Chisq") # Cuando el phi es conocido
+anova(fit1,fit3,test="F") # Cuando el phi es desconocido.
+```
+* Prueba de hipotesis sobre la diferencia de deviance:
+  + Ho = El modelo mas parsimonioso es adecuado. No es necesario añadir mas terminos.
+  + H1 = El modelo mas complejo es adecuado. Es necesario añadir mas terminos.
+* Se puede chequear la utilidad del modelo M2 (largo o complejo), en relacion a M1 (corto o parsimonioso) mediante la diferencia de deviance.
+* Con un p valor de 8.025e-08 concluimos que la muestra reune evidencias suficientes para rechazar la hipotesis nula por lo que se concluye que el modelo mas largo o complejo es adecuado.
+
+### Explore la relación media-varianza y ajuste un modelo que resulte adecuado para este conjunto de datos.
+* El modelo lineal normal propone una relacion media varianza constante.
+* El modelo gamma propone una realcion media varianza, en donde la varianza aumenta con el cuadrado de la media, ademas el coeficiente de variacion es constante.
+
+```{r}
+media<-tapply(tiempo,tipo,mean)  #buscar estudiar la relacion media c/ varianza
+varianza<-tapply(tiempo,tipo,var)
+plot(media,varianza)          #existe una relacion entre media y varianza
+tapply(tiempo,tipo,sd)/tapply(tiempo,tipo,mean) #calculo de CV=DS/Media aprox.1
+```
+* En el grafico podemos ver una relacion lineal o cuadratica entre media y varianza, directamente proporcional, lo que sugiere que el modelo normal propuesto no es el adecuado.
+* Como el coeficiente de variacion se mantiene relativamente constante, POR ESTE MOTIVO DIGO QUE PUEDO AJUSTAR UNA GAMMA.
+
+### Cancu relacion media varianza
+```{r}
+# Estudiamos la relacion media-varianza
+by(datos$tiempo, datos$tipo, function(x) { c(Mean=mean(x), Cuad=mean(x)^2, Cub=mean(x)^3, Var=var(x)) } )
+```
+* Pareciera que esta mas cercana la media^2 a la varianza (lo que indicaria que es mas una Gamma que una Normal Inversa)
+
+### Adicion de nuevos terminos al modelo: Test de cociente de verosimilitud anova() para evaluar adicion de terminos al modelo
+```{r}
+anova(fit1,test="Chisq") # Cuando el phi es conocido
+anova(fit1,test="F") # Cuando el phi es desconocido.
+```
+* Prueba de hipotesis sobre la diferencia de deviance:
+  + Ho = La adicion del nuevo termino no aporta a lo que explica el modelo, por lo que no es necesario añadirlo. Cambio en la deviance no es significativo con la adicion del nuevo temrino.
+  + H1 = La adicion del nuevo termino aporta a lo que explica el modelo, por lo que es necesario añadirlo. Cambio en la deviance es significativo con la adicion del nuevo termino.
+
+#### Adicion de covariable importante para describir la respuesta en modelo gamma (phi desconocido):
+```{r}
+anova(fit1,test="F")        #aqui el test es F por que phi es desconocido
+anova(fit1,test="Chisq")    # si no podria ser chisq
+```
+* Adecuacion 3, veo si la covariable es importante para describir tiempo de vida
+* Se concluye que el modelo es adecuado y que es significativa la adicion de la covariable
+
+#### Se evalua la adicion de el nuevo termino a modelo poisson (phi conocido):
+* Se analiza si el cambio en la deviance es significativo luego de añadir una covariable nueva.
+```{r}
+anova(fitglm, test="Chisq") # Binomial y poisson pq phi conocido.
+```
+* Ambos temrinos son significativos, su incorporacion al modelo tiene sentido.
+
+#### Phi NO conocido:
+* Se analiza si el cambio en la deviance es significativo luego de añadir una covariable nueva.
+```{r}
+anova(fitglm, test="F") # Gamma y normal pq phi no conocido.
+```
+
+### Prueba formal sobre el enlace
+### Se usa para la prueba formal del predictor lineal, p valor = 0.6 no explica nada nuevo, no es necesario añadirlo al modelo, el modelo es adecuado.
+Si el cambio en la deviance es significativo esto muestra mal enlace, mala escala para una covariable o ambos. Recordar añadir n^2 al modelo. Este evaluamos.
+```{r}
+eta2=(fitglm$linear.predictors)^2
+fit2n<- glm(casos~t+I(t^2)+eta2, family= poisson)
+summary(fit2n)
+
+#como el phi vale 1 no debe ser estimado
+1-pchisq(fit2n$deviance,fit2n$df.residual) #No hay evidencia para rechazar adecuacion del modelo
+anova(fit2n, test="Chisq")# eta no significativo entonces eleccion enlace canonico estaba bien
+```
+* Prueba de hipotesis sobre la diferencia de deviance:
+  + Ho = La adicion del nuevo termino no aporta a lo que explica el modelo, por lo que no es necesario añadirlo. Cambio en la deviance no es significativo con la adicion del nuevo temrino.
+  + H1 = La adicion del nuevo termino aporta a lo que explica el modelo, por lo que es necesario añadirlo. Cambio en la deviance es significativo con la adicion del nuevo termino.
+
+* La adicion del eta^2 es no significativa, esto quiere decir que el cambio en la deviance al agregar el nuevo termino es no significativo, por lo que no es necesario añadirlo, en este caso se concluye que el modelo es adecuado.
+
+* La adicion del eta^2 es significativa, esto quiere decir que el cambio en la deviance al agregar el nuevo termino es significativo, por lo que es necesario añadirlo, en este caso estaria indicando una mala eleccion del enlace, una mala escala en una covariable o ambos.
+
+## Intervalos de confianza
+### Para el beta
+```{r}
+#Intervalo de confianza a mano 
+#Nivel de confianza
+level = 0.95
+a <- (1 - level)/2
+a <- c(a, 1 - a)
+fac <- qnorm(a)
+ses <- sqrt(diag(vcov(fit1)))
+ci <- fitglm$coefficients[2] + ses[2] %o% fac
+
+#Intervalo de confianza con funcion
+confint.default(fitglm)
+```
+* El coeficiente beta poblacional se encuentra entre [] con una confianza del 95%, es decir que la confianza de que el parametro se encuentra entre los limites del intervalo es del 95%. Si se construyen muchos intervalos de confianza a partir de distintas muestras provenientes de la misma poblacion un 95% de intervalos contendran al verdadero valor del parametro.
+
+### Para el cociente de chances
+```{r}
+# Intervalo de confianza a mano:
+level = 0.95
+a <- (1 - level)/2
+a <- c(a, 1 - a)
+fac <- qnorm(a)
+ses <- sqrt(diag(vcov(fitglm)))
+ci <- fitglm$coefficients[2] + ses[2] %o% fac
+exp_ci <- exp(ci)
+
+exp(confint.default(fitglm))
+```
+* La chance de contraer sintomas para los pacientes que se someten al tratamiento con azt mas adelante es entre [1.18; 3.55] veces la chance de contraer sintomas  para los pacientes que se someten al tratamiento con azt inmediatamente con una confianza del 95%, cuando se mantiene fija la otra variable.
+Es decir que el verdadero valor del parametro se encuentra entre los limites del intervalo con una confianza del 95%, cuando se mantiene fija la otra variable.
+
+### Para el predictor lineal para luego obtener el de probabilidad
+```{r}
+#Hago grafico y veo valores
+plot(ancho, sat, ylab="Probabilidad estimada")
+# Guardo valores entre los que quiero hacer la grafica
+anchodf <- data.frame(ancho = seq(21,33.5,0.1))
+# Pido que guarde los EE del eta
+eta <- predict(fit, newdata = anchodf, se.fit = TRUE)
+# Calcule la probabilidad
+prob <- predict(fit, newdata = anchodf, type = "response")
+#Calcula los limites del intervalo para los valores
+LIeta <- eta$fit - qnorm(0.975)*eta$se.fit
+LSeta <- eta$fit + qnorm(0.975)*eta$se.fit
+LIp <- exp(LIeta)/(1 + exp(LIeta)) # bandas de confianza para p
+LSp <- exp(LSeta)/(1 + exp(LSeta))
+# Agrega las lineas
+lines(seq(21,33.5,0.1), prob, lwd=2)
+lines(seq(21,33.5,0.1),LIp,lty=2,lwd=2)
+lines(seq(21,33.5,0.1),LSp,lty=2,lwd=2)
+```
+
+## Estimacion del phi para Gamma
+```{r}
+library(MASS)
+# Estimacion del phi
+gamma.dispersion(fit1) # estima ϕ por máxima verosimilitud
+fit1$deviance
+# deviance escalada y bondad de ajuste
+dev_esc <- fit1$deviance/gamma.dispersion(fit1)
+dev_esc
+1-pchisq(dev_esc,fit1$df.residual) #Ho:modelo adecuado
+```
+
+## Equivalencia modelo binomial y poisson
+### Modelo de independencia:
+```{r}
+# Datos POISSON
+conteo<-c(16,48,40,20)
+tra<-factor(c("placebo","placebo","droga","droga"))
+rta<-factor(c("fav","desfav","fav","desfav"))
+
+# Modelo de independencia POISSON
+fitp1<-glm(conteo~tra+rta,family=poisson)
+
+
+# Datos BINOMIAL
+fav<-c(16,40)
+desfav<-c(48,20)
+trat<-factor(c("placebo","droga"))
+
+# Modelo de independencia BINOMIAL
+fit1<-glm(cbind(fav,desfav)~1,family=binomial)
+```
+* La hipotesis de independencia entre las dos variables corresponde a la hipotesis de que este modelo es adecuado.
+En el caso en que el modelo no es adecuado luego se asume que existe asociacion entre las variables y tiene sentido ajustar un modelo de asociacion.
+
+### Modelo de asociacion:
+```{r}
+# Modelo de asociacion POISSON
+fitp2<-glm(conteo~tra*rta,family=poisson)
+summary(fitp2)
+
+# Modelo de asociacion BINOMIAL
+fit2<-glm(cbind(fav,desfav)~trat,family=binomial)
+```
+En el caso en que el modelo de asociacion coincida con el modelo saturado, la deviance es 0 y la unica forma de verificar la adecuacion del modelo de asociacion es rechazando el ajuste del modelo de independencia. # caso limite tablas de contingencia 2x2.
+
+## Estimaciones
+### 1 NORMAL: d- Estime el valor de porosidad esperado para un peso unitario de 113 lb/pie3:
+```{r}
+xi <- 113;
+if (range(peso)[1] <= xi && xi <= range(peso)[2]) {
+    print(fitglm$coef[1] + fitglm$coef[2] * xi);
+}
+# Si el valor que quiero predecir se encuentra dentro del rango de los datos, entonces que prediga.
+```
+
+### 3 BINOMIAL: c- Con las estimaciones obtenidas, prediga la proporción de escarabajos muertos cuando log(dosis) = 1.75 (dosis máxima recomendada para el cultivo).
+```{r}
+fit3$coefficients
+b<-coef(fit3)
+n<-b[1]+b[2]*1.75  #predictor lineal fit3 cuando lndosis=1.75
+
+# η = log(− log(1 − µ))
+1-exp(-exp(n))
+```
+* La proporcion de escarabajos muertos cuando el log dosis es 1.75 es de 0.3
+
+### 3 BINOMIAL: d- ¿Cuál es la LD50, es decir, la dosis que provoca la muerte del 50% de los individuos?
+```{r}
+#complemento log log
+# media = 0.5
+(log(−log(1−0.5)) - b[1])/b[2] #dosis
+exp((log(−log(1−0.5)) - b[1])/b[2]) #ln dosiss
+```
+* ln dosis = 1.77
+* dosis = 5.92
+
+```{r}
+# enlace logit
+# p=0.5
+# log(p/1-p)= log(1)= 0
+b1=fit1$coefficients
+lndosis= -b1[1]/b1[2];lndosis #dosis
+dosis=exp(lndosis);dosis #ln dosis
+```
+* ln dosis = 1.77
+* dosis = 5.88
+
+```{r}
+# enlace probit
+# p=0.5
+probit=pnorm(-0.5)
+#pnorm(0.025, mean = 0, sd = 1, lower.tail = TRUE)
+b2=fit2$coefficients
+lndosis= (probit-b2[1])/b2[2];lndosis #dosis
+dosis=exp(lndosis);dosis #ln dosis
+```
+* ln dosis = 1.78
+* dosis = 5.96
+
+
+### 4 BINOMIAL: b- Estime la probabilidad de que una persona con valor de ck de 120 haya sufrido un ataque cardíaco.
+* Cabe destacar que nos encontramos ante un modelo del tipo binomial con funcion de enlace logit
+```{r}
+b<-coef(fit3)
+n<-b[1]+b[2]*120+b[3]*120^2+b[4]*120^3  #predictor lineal fit3 cuando ck=120
+exp(n)/(1+exp(n))
+```
+
+### 13 BINOMIAL: Estimacion casos positivos para dilucion 0.
+```{r}
+fitglm$coefficients
+b<-coef(fitglm)
+n<-b[1]+b[2]*0  #predictor lineal cuando dilucion es 0
+
+# η = logit(p)
+p0 = exp(n)/(1+exp(n))
+p0*5
+```
+* La proporcion de casos positivos cuando la dilucion es 0 es de 0,7179
+* p0 = casos positivos /  total 
+* casos positivos = p0 * total = 3,6 = 4.
+
+## Pruebas de hipotesis por medio de contrastes
+### 11 GAMMA: b- Realice pruebas de hipótesis para comparar los niveles dentro de cada una de las variables consideradas.
+```{r}
+# Pruebas de hipotesis, en este ejemplo vemos si temp1=temp2 y sol1=sol2
+fitglm$coefficients
+lht(fitglm,c(0,1,-1,0,0), test="F") #Compara temp 1 y temp 2 
+lht(fitglm,c(0,0,0,1,-1), test="F") #Compara sol 1 y sol 2
+```
+* Ambas dan no significativas.
+Ho: son iguales.
+H1: son distintas.
+
+## Formulacion de cada modelo para cada distribucion: 
+### Normal:
+* El objetivo es modelar la respuesta media.
+
+```{r}
+fitglm <- glm(porosidad ~ peso); # por defecto es Normal con g canonico i.e. glm == lm
+summary(fitglm);
+# Uso distribucion Normal y por lo tanto n=g(u)=u
+```
+1- Componente aleatoria: 
+La variable aleatoria Y representa:
+Y= 
+Es una muestra aleatoria con distribucion N(m,s^2) de parametros m y s^2, donde m es media de la variable respuesta y s^2 la varianza de la misma.
+Yi~N(mi,s^2).
+Es decir que las componentes de Y son independientes e identicamente distribuidas con distribucion N(mi,s^2). La varainza se asume constante para todas las observaciones.
+Ademas sabemos que esta distribucion pertenece a la familia exponencial en la forma canonica.
+
+2- Componente sistematico:
+Las covariables medidas forman un predictor lineal. 
+n = sumatoria desde i=1 hasta n de las xi*bj.
+donde n es igual a la cantidad de datos y j es igual a la cantidad de parametros estimados. p= cantidad covariables, p+1 cantidad parametros estimados.
+
+3- Funcion de enlace:
+Es la funcion que relaciona la componente aleatoria con la componente sistematica. 
+En este caso se toma como funcion de enlace a la funcion identidad(m), que ademas es la funcion de enlace canonica.
+identidad(mi)= mi = ni = sumatoria xi*bj=
+
+### Binomial:
+* El objetivo es modelar la proporcion de exitos o probabilidad del exito.
+
+* (family = binomial) = (link = “logit”) #Logit, enlace canonico
+* (link = “probit”) #Probit 
+* (link = “cloglog”) #Complemento log-log
+
+* Los datos se cargan como cbind(exitos,fracasos) ~ respuesta.
+* Para analisis exploratorio se usan los datos de proporcion.
+
+Ajustar modelo de independencia, interpretar adecuacion, luego modelo de asociacion e interpretar y luego diferencia de deviances y ver si es singinifcativa adicion de temrinos.
+Cuando estamos en modelo saturado con mas razon evaluar la diferencia de deviances.
+```{r}
+### Enlace logit:
+fit1<-glm(cbind(muertos,total-muertos)~lndosis,family=binomial) 
+summary(fit1)
+
+### Enlace probit:
+fit2<- glm(cbind(muertos,total-muertos)~lndosis,family=binomial(link = "probit")) 
+summary(fit2)
+
+### Enlace complemento loglog:
+fit3<-glm(cbind(muertos,total-muertos)~lndosis,family=binomial(link = "cloglog")) 
+summary(fit3)
+
+```
+
+
+### Gamma:
+* Recordar que en modelo gama la realcion media varianza es cuadratica. Analizarla.
+* Se modela la media de la variable respuesta.
+
+```{r}
+## Ajusta un modelo Gamma con enlace canonico, que es el link inverso
+fit2<- glm(tiempo~tipo, family=Gamma)# Usa el enlace canonico que es el link inverso
+summary(fit2) # MLG Gamma c/ link inverso =1/mu
+
+# Link identidad
+fit1<-glm(tiempo~tipo,family=Gamma(link="identity")) #CV~1,Gamma c/ link=identidad
+summary(fit1)
+
+# Cuidado en gamma adecuacion del modelo depende mucho del phi, estimado distinto de dos formas
+1-pchisq(fit1$deviance/summary(fit1)$dispersion,fit1$df.residual)
+1-pchisq(fit1$deviance/phi,fit1$df.residual)
+```
+1- Componente aleatoria: 
+La variable aleatoria Y representa:
+Y= 
+Es una muestra aleatoria con distribucion G(m,v) de parametros m y v. El modelo gamma asume coeficiente de variacion constante.
+Yi~G(mi,v).
+Es decir que las componentes de Y son independientes e identicamente distribuidas con distribucion G(mi,v). El coeficiente de variacion se asume constante para todas las observaciones.
+Ademas sabemos que esta distribucion pertenece a la familia exponencial en la forma canonica.
+
+2- Componente sistematico:
+Las covariables medidas forman un predictor lineal. 
+n = sumatoria desde i=1 hasta n de las xi*bj.
+donde n es igual a la cantidad de datos y j es igual a la cantidad de parametros estimados. p= cantidad covariables, p+1 cantidad parametros estimados.
+
+3- Funcion de enlace:
+Es la funcion que relaciona la componente aleatoria con la componente sistematica. 
+En este caso se toma como funcion de enlace a la funcion reciproco(m), que ademas es la funcion de enlace canonica.
+reciproco(mi)= 1/mi = ni = sumatoria xi*bj=
+
+### Poisson
+* El objetivo es modelar la media de la respuesta que son los conteos.
+* Es un conteo de casos exitosos que no esta referido a un total propiamente dicho.
+* Estamos en precencia de datos provenientes de un conteo, lo cual nos refiere a un GLM con una respuesta de la familia poisson, la cual se caracteriza por:
+* g(u) = log(u)  = n = Xb = X * [bo color sexo]
+* .:. u = exp(Xb)
+```{r}
+fitglm <- glm(casos ~ t, family="poisson"); # El enlace canonico es el log(m)
+summary(fitglm)
+
+# Con termino cuadratico.
+fitglm <- glm(casos ~ t+I(t^2), family="poisson");
+```
+1- Componente aleatoria: 
+La variable aleatoria Y representa:
+Y=  Cantidad de exitos en un intervalo continuo.
+Es una muestra aleatoria con distribucion P(m) de parametros m. 
+Yi~P(mi).
+Es decir que las componentes de Y son independientes e identicamente distribuidas con distribucion P(mi).
+Ademas sabemos que esta distribucion pertenece a la familia exponencial en la forma canonica.
+
+2- Componente sistematico:
+Las covariables medidas forman un predictor lineal. 
+n = sumatoria desde i=1 hasta n de las xi*bj.
+donde n es igual a la cantidad de datos y j es igual a la cantidad de parametros estimados. p= cantidad covariables, p+1 cantidad parametros estimados.
+
+3- Funcion de enlace:
+Es la funcion que relaciona la componente aleatoria con la componente sistematica. 
+En este caso se toma como funcion de enlace a la funcion log(m), que ademas es la funcion de enlace canonica.
+log(mi)= ni = sumatoria xi*bj=
+
+### Multinomial
+Tener en cuenta que lo unico que cambia entre nominal y ordinal es la interpretacion de los coeficientes estimados. Y cuando lo ajusto poner parallel = FALSE en nominal y parallel =  TRUE en ordinal.
+#### Modelo de asociacion:
+Pimero ajustar modelo de independencia y luego el modelo de asociacion, analizar la deviance de cada uno de ellos y luego analizar el cambio en la deviance entre ellos al agregar los nuevos terminos.
+Seria la forma de justificar la bondad de ajuste.
+```{r}
+library(VGAM)
+# Ordinal
+fit <- vglm(cbind(dem,rep,ind)~sexo+raza, family=cumulative(parallel = TRUE))
+summary(fit)
+
+pchisq(37.3969, 4,lower.tail=F)
+
+
+# Nominal: 
+fit <- vglm(cbind(dem,rep,ind)~sexo+raza, family=cumulative(parallel = FALSE))
+```
+* P valor es bajo, por lo que la muestra reune evidencias suficientes para rechazar la hipotesis nula de que el modelo es adecuado a un nivel de significancia del 5%, por lo que el modelo no seria adecuados.
+
+#### Ajusto modelo de independencia
+```{r}
+fit2 <- vglm(cbind(dem,rep,ind)~1, family=cumulative(parallel = TRUE))
+summary(fit2)
+
+pchisq((90.933 - 37.3969), (6 - 4),lower.tail=F) #Cociente de verosimilitud.
+```
+* El cambio en la deviance es significativo al agregar los terminos por lo que se concluye que el modelo con mayor cantidad de parametros es con el que nos debemos quedar.
+
+### Cuasiverosimilitud
+##### Como me doy cuenta que estoy frente a problema de supersdispersion:
+```{r}
+# Deviance >>>> grados de libertad. Es muy grande.
+
+# Para datos poisson escala mantiene constante:
+plot(sqrt(fit$fitted.values),glm.diag(fit)$rd)
+plot(datos$observado,glm.diag(fit)$rd)
+# En este gradico se ve que los residuos son muy altos, superan las bandas de -2 y 2.
+
+# Plantear relacion media-varianza en intervalos y ver como es para cada distribucion.
+
+#Luego de la correccion:
+# Luego de corregir volver a verificar como se corrigieron los residuos.
+s<-sqrt(summary(fitq)$dispersion) # phi para corregir los errores
+plot(sqrt(fit$fitted.values),glm.diag(fit)$rd/s)
+plot(datos$observado,glm.diag(fit)$rd/s)
+# En este gradico se ve que los residuos quedan dentro de las bandas de -2 y 2.
+
+# Vemos como varia el valor de phi, es el valor qeu corrige los residuos, a traves de su raiz.
+
+```
+
+#### Cuasi-Poisson: 18
+##### Ajusto modelo poisson y veo
+```{r}
+fitglm <- glm(datos$muertes ~ datos$sitio+datos$edad, family="poisson"); # El enlace canonico es el log(m)
+summary(fitglm)
+adecuacionPval(fitglm);
+
+fit2 <- glm(datos$muertes ~ datos$sitio*datos$edad, family="poisson")
+summary(fit2)
+adecuacionPval(fit2)
+```
+* El p valor es muy bajo tanto para el modelo de independencia como para el modelo de asociacion, por lo que la muestra reune evidencias suficientes para rechazar la hipotesis nula, por lo que el modelo no es adecuado.
+
+##### Cambio en la deviance:
+```{r}
+anova(fitglm,fit2,test="Chisq")
+```
+
+* El cambio en la deviance es significativo, por lo que nos quedamos con el modelo que tiene mas parametros, el modelo de asociacion.
+
+##### Quasipoisson
+
+* Al ser la deviance tan grande podria parecer que se trata de un problema de superdispersion por lo que modelaremos con la quasipoisson para interpretar el ajuste. Esto permite que el phi estimado no sea 1 como en el caso de la poisson y que mejoren los resultados. Como la funcion de varianza coincide con la de la familia poisson los betas no deben reestimarse, es decir que la estimacion EMV y EMCV son iguales. Lo que cambia es que el phi asume un valor distinto a la unidad por lo que los errores estandares se corrigen multiplicando por un factor.
+
+```{r}
+fit3 <- glm(datos$muertes ~ datos$sitio*datos$edad, family="quasipoisson")
+summary(fit3)
+adecuacionPval(fit3)
+summary(fit3)$dispersion
+```
+* El p valor es grande, por lo que la muestra no reune evidencias suficientes para rechazar la hipotesis nula, por lo que se concidera que el modelo es adecuado a un nivel de significancia del 5%.
+
+#### Quasi-Binomial: 19
+##### Ajustamos modelo binomial y vemos
+```{r}
+### Enlace logit:
+fit1<-glm(cbind(y,a)~especie+extracto,family="binomial") 
+summary(fit1)
+adecuacionPval(fit1)
+```
+* El p valor es bajo por lo que la muestra reune evidencias suficientes para rechazar la hipotesis nula para un nivel de significancia del 5% por lo que el modelo no es adecuado.
+
+##### Modelo de independencia
+```{r}
+
+fit11<-glm(cbind(y,a)~1,family="binomial") 
+summary(fit11)
+adecuacionPval(fit11)
+```
+* El p valor es bajo por lo que la muestra reune evidencias suficientes para rechazar la hipotesis nula para un nivel de significancia del 5% por lo que el modelo no es adecuado.
+
+##### Analisis de la diferencia de deviance entre modelos ajustados
+```{r}
+anova(fit1,fit11,test="Chisq")
+```
+* Prueba de hipotesis sobre la diferencia de deviance:
+  + Ho = El modelo mas corto es adecuado
+  + H1 = El modelo mas largo es adecuado
+* Se puede chequear la utilidad del modelo M2 (largo), en relacion a M1 (corto) mediante la diferencia de deviance.
+* Con un p valor de 1.515xe-13 concluimos que la muestra reune evidencias suficientes para rechazar la hipotesis nula por lo que se concluye que el modelo con mas coeficientes es adecuado.
+
+##### Quasibinomial
+* Los coeficientes son significativos, pero el modelo no ajusta bien. El problema podria ser conciderar el phi igual a 1 por lo que probamos con un modelo quasybinomial.
+Como la funcion de varianza coincide con la de la familia binomial los betas no deben reestimarse, es decir que la estimacion EMV y EMCV son iguales. Lo que cambia es que el phi asume un valor distinto a la unidad por lo que los errores estandares se corrigen multiplicando por un factor.
+```{r}
+fit2<-glm(cbind(y,a)~especie+extracto,family="quasibinomial") 
+summary(fit2)
+adecuacionPval(fit2)
+```
+* Se obtiene un mayor p valor por lo que para este modelo la muestra no reune evidencias suficientes para rechazar la hipotesis nula, por lo que el modelo se concidera adecuado.
+
+## Interpretacion coeficientes
+#### Interpretacion de la chance Poisson
+```{r}
+exp((fitglm$coefficients)[3]);
+```
+* La chance de morir siendo Macho (exito en el que figura en la salida) es 3.0064 veces mayor a la de morir siendo hembra (fracaso en la categoria de referencia). Por cada Hembra, mueren 3 Machos.
+
+#### Interpretacion Poisson:
+```{r}
+# grupotrat:tumorpresente = 1.97 unico coeficiente que se interpreta:
+# exp(b) = 7.18
+# La chance de tener un tumor en el grupo tratamiento es 7.18 veces la chance de tener un tumor en el grupo control.
+```
+
+#### Equivalencia log lineal y logit para regresion multiple, interpretacion clara:
+```{r}
+# Equivalente poisson a ejemplo raza y sexo:
+datos <- tibble(
+  sexo=c("fem","masc","fem","masc","fem","masc","fem","masc"),
+  raza=c("blanca","blanca","negra","negra","blanca","blanca","negra","negra"),
+  graduacion=c("graduado","graduado","graduado","graduado","nograd","nograd","nograd","nograd"),
+  conteo=c(498,878,54,197,298,747,89,463)
+)
+attach(datos)
+# Modelo asociacion para comparar parametros:
+# La respuesta en el binomial es gradudado, asi que aqui ponemos interaccion de ambos con graduado para poder interpretar igual
+fit<-glm(conteo~sexo*graduacion+raza*graduacion, family="poisson")
+adecuacionPval(fit)
+summary(fit)
+exp(fit$coefficients)
+# Dan muy parecido a la regresion logistica:
+#sexomasc:graduacionnograd 1.6054804    
+# La chance de no graduarse en el sexo masculino es 1.60 veces la chance de no graduarse en el sexo femenino, manteniendo constante la raza.          
+
+# La chance de graduarse en el sexo femenino es 1.60 veces la chance de graduarse en el sexo masculino, manteniendo constante la raza.          
+
+#graduacionnograd:razanegra  2.8957929 
+# La chance de no graduarse en la raza negra es 2.89 veces la chance de no graduarse en el raza blanca, manteniendo constante el sexo.
+
+# La chance de graduarse en la raza blanca es 2.89 veces la chance de graduarse en el raza negra, manteniendo constante el sexo.
+
+# El de independencia no ajusta
+fitindep<-glm(conteo~sexo+graduacion+raza, family="poisson")
+adecuacionPval(fitindep)
+```
+```{r}
+# Modelo binomial de regresion logistica:
+grad<-c(498,878,54,197)
+nograd<-c(298,747,89,463)
+sexo<-c(1,0,1,0) # 1 para femenino 0 masculino referencia
+raza<-c(1,1,0,0) # 1 para blanco 0 para negro referencia
+
+#cbind(exito, fracaso)
+fit<-glm(cbind(grad,nograd)~sexo+raza,family=binomial)
+summary(fit)
+exp(coef(fit))
+#sexo 1.4225348
+# La chance de graduarse en el sexo femenino es 1.4225348 veces la chance de graduarse en el sexo masculino, manteniendo constante la raza.          
+
+#raza 2.7606512
+# La chance de graduarse en la raza blanca es 2.7606512 veces la chance de graduarse en el raza negra, manteniendo constante el sexo.
+
+# son practicamente iguales, equivalentes.
+```
+
+#### Binomial Interprete los resultados obtenidos, realizando estimaciones de cocientes de chances. 
+```{r}
+exp(coef(fitglm))
+```
+* La categoria de referencia es la que no figura.
+* Conclucion general: La chande de exito de la categoria de NO REFERENCIA es X veces la chance de exito de la CATEOGRIA DE REFERENCIA, manteniendo constante la otra variable.
+* La chance de contraer sintomas para los pacientes que se someten al tratamiento con azt mas adelante es 2.054 veces la chance de contraer sintomas  para los pacientes que se someten al tratamiento con azt inmediatamente, manteniendo fija la raza.
+* La chance de contraer sintomas para los pacientes de raza negra es 0.95 veces la chance de contraer sintomas  para los pacientes de raza blanca, manteniendo fijo el momento del tratamiento con azt. Es decir que la raza no es significativa en este modelo.
+
+#### Interpretacion al reves
+```{r}
+exp(-coef(fitglm))
+```
+* La chance de contraer sintomas para los pacientes que se someten al tratamiento con azt inmediatamente es 0.5 veces la chance de contraer sintomas  para los pacientes que se someten al tratamiento con azt mas adelante, manteniendo fija la raza.
+* La chance de contraer sintomas para los pacientes de raza blanca es 1.05 veces la chance de contraer sintomas  para los pacientes de raza negra, manteniendo fijo el momento del tratamiento con azt. Es decir que la raza no es significativa en este modelo. 
+
+#### Interpretacion multinomial
+```{r}
+fitted.values(fit)
+
+exp(coef(fit))
+
+exp(-coef(fit))
+```
+* La chance de tener ideologia en la direccion liberal en vez de la democrata en la raza negra es 3.82 veces esa chance en la raza blanca, manteniendo constante las demas variables.
+
+* La chance de tener ideologia en la direccion liberal en vez de la  democrata en el sexo femenino es 1.29 veces esa chance en el sexo femenino, manteniendo constante las demas variables.
+
+#### Interpretacion Quasi-poisson: con variable continua.
+```{r}
+exp(coef(fit3))
+mean(datos$edad) #4.92
+```
+* La media de arboles muertos aumenta en un factor de 1.27 cuando aumenta en una unidad la edad. Es decir al aumentar la edad en una unidad la media de arboles muertos aumenta un 27%.
+
+* La cantidad media de arboles muertos aumenta en un factor de 0.89 en el sitio 2 respecto a el sitio 1 manteniendo constante las demas variables. Es decir la media disminuye un 11% en el sitio 2 respecto al sitio 1. 
+
+* La cantidad media de arboles muertos aumenta en un factor de 1.006 en el sitio 3 respecto al sitio 1 manteniendo constante las demas variables. Es decir la media aumenta un 0.6% en el sitio 3 respecto al sitio 1.
+
+* La cantidad media de arboles muertos aumenta en un factor de (-11% + 27% - 8%) = 8% en el sitio 2 respecto al sitio 1 cuando la edad aumenta en una unidad.
+
+* La cantidad media de arboles muertos aumenta en un factor de (0.6% + 27% + 11%) = 38.6% en el sitio 3 respecto al sitio 1 cuando la edad aumenta en una unidad.
+
+#### Interpretacion quasi-binomial:
+```{r}
+exp(coef(fit2))
+```
+* La chance de que germine para la especie oa75 es 1.31 veces mayor que para la especie oa73. Es decir que la chance es un 31% veces mas grande en la especie oa75 que en la oa73, manteniendo constante el extracto.
+
+* La chance de que germine en pepino es 2.9 veces mas grande que la chance de que lo haga en haba, manteniendo constante la especie.
+
+# Residuals and model checking
+
+## 5 Tecnicas de diagnostico.
+
+### Valores observados yi vs. cada una de las covariables. 
+* Grafico exploratorio que permite ver la relación entre la respuesta y las covariables.
+```{r}
+plot(datos$y, datos$covariable)
+```
+
+### Valores observados yi vs. mi valores predichos. 
+* Permite ver la bondad de ajuste del modelo, podemos ver que tanto se asemejan, uno busca que se parezcan, ver que tanto se alejan de la recta a 45 grados.
+
+```{r}
+#Opcion 1
+plot(fitglm$fitted.values, fitglm$y)
+abline(0,1);
+
+#Opcion 2 
+plot(peso, porosidad);
+abline(fitglm$coef);
+#Ambos graficos muestran lo mismo de distinta forma
+```
+* Podemos ver como en el grafico se ve lo acertado que es el modelo como consecuencia de lo mucho que se asemejan los valores predichos y observados. Ademas esta semejanza se ve plasmada en la cercania de los datos graficados a la recta de 45º.
+* Los valores se alejan levemente de la recta de 45º, se nota una tendencia cuadratica.
+
+###  Residuos estandarizados vs. mi valores predichos (o transformados en la escala en que la información es constante) o vs. ni. 
+* Si el modelo es adecuado, el gráfico no debería mostrar ninguna tendencia (patrón nulo). La transformación de escala se refiere a una transformación específica para cada distribución que mejora la apariencia del eje de las x. 
+```{r}
+# Residuos estandarizados (de deviance) vs valores predichos
+plot(fitglm$fitted.values, glm.diag(fitglm)$rd);
+
+# Residuos estandarizados vs el predictor lineal
+plot(fit1$linear.predictors,glm.diag(fit1)$rd)
+# Equivalente al de residuos del modelo versus la covariable, si hay tendencia entonces la covarible aun puede explicar mas de la variabilidad de los datos. Sospecho que cuando hay mas de una covariable alli tiene sentido discriminar por cada covariable por separado.
+
+# Agregamos limites
+plot(fitglm$fitted, glm.diag(fitglm)$rd);
+abline(2,0);
+abline(-2,0);
+```
+* Si el modelo es adecuado el grafico no deberia mostrar ninguna tendencia (patron nulo), como en este caso.
+
+### Residuos parciales vs valores observado de esa covariable
+* Este grafico muestra los residuos de un modelo que no incluyen la covariable versus la covariable. La forma en que debemos introducir la covariable para que explique lo que no se esta pudiendo explicar sin ella.  La tendencia nos sugiere que no se esta explicando en el modelo y como añadirla al modelo.
+```{r}
+plot(datos$y, residuals(fit1, type="partial")[,1]);
+```
+
+### Residuos vs valores observado de esa covariable
+* Este grafico muestra los residuos de un modelo versus la covariable. La tendencia en este grafico muestra que la covariable puede explicar mas aun y por lo tanto debemos añadir otro temrino de la misma para explicar lo que aun queda remanente.
+```{r}
+plot(datos$covariable, residuals(fit1));
+plot(fit1$linear.predictors,glm.diag(fit1)$rd)
+# Los graficos son equivalentes.
+```
+
+### Residuos estandarizados vs. caso. 
+* Permite identificar cual observación tiene cual residuo, entonces buscamos esa directamente y corregimos. 
+
+```{r}
+# Residuos estandarizados (de deviance) vs valores predichos
+plot(1:nrow(concreto), glm.diag(fitglm)$rd);
+#Podria ser algo asi o generar una combinacion de variables que identifique el caso en una nueva variable y hacer el grafico ese.
+```
+
+### Residuos estandarizados vs. orden en que se tomaron las mediciones (para analizar posible correlación).
+```{r}
+# Residuos estandarizados vs orden en que se tomaron las mediciones
+plot(1:nrow(concreto), glm.diag(fitglm)$rd);
+```
+* No se observa patron alguno.
+
+### Residuos estandarizados en el instante t vs. en el instante t-1. Si hay patrón habla de asociación con lo cual no hay independencia, algo que no debería ocurrir.
+```{r}
+res<- c(0,glm.diag(fit1)$rd[-length(glm.diag(fit1)$rd)])
+plot(glm.diag(fit1)$rd,res);
+```
+* Esperamos que no haya patron alguno.
+
+### Residuos estandarizados vs. covariable incluida en el modelo. 
+* Si hay patrón debo incluir, si no hay patrón está bien dejarla afuera.
+
+```{r}
+# Residuos estandarizados vs covariable incluida en el modelo 
+plot(peso, glm.diag(fitglm)$rd);
+```
+* Si la covariable esta bien cargada en el modelo no se espera patron alguno, si hay algun patron debemos modificar la forma en que se encuentra incluida en el modelo. En este caso no hay ningun patron, la covariable se encuentra bien incluida en el modelo.
+
+### Residuos estandarizados vs. covariable no incluida en el modelo. 
+* Si la covariable esta bien cargada no espero ningún patrón. Si hay algún patrón debo modificar la forma en que añadí esa covariable.
+```{r}
+plot(datos$covariablenoinc, glm.diag(fitglm)$rd);
+```
+
+## Gráficos para chequear la función de varianza:
+* Valor absoluto de los residuos estandarizados vs. valores ajustados (en la escala en la que la información es constante). Una tendencia positiva indica que la función de varianza elegida es tal que la varianza crece demasiado lento con la media. Una tendencia negativa implica lo
+contrario.
+```{r}
+plot(fit1$fitted.values, abs(glm.diag(fit1)$rd));
+```
+
+
+* Varianza muestral vs. media muestral para el caso en que se tengan varias observaciones para cada configuración de las covariables.
+
+* (yi-mi)^2 vs mi.
+```{r}
+plot(((muertos-fit1$fitted.values)^2), fit1$fitted.values);
+```
+Este grafico es previo al ajuste del modelo, aqui analizo si la forma es tal como la que yo voy a proponer o propuse.
+
+## Residuos parciales
+* Se recomienda graficar residuos parciales para xj vs. xj. Si la escala de la covariable es correcta, el grafico debería aproximarse a una recta. En caso contrario, la forma del grafico podría sugerir la corrección a realizar.
+* residuals(fit,type="partial") #Residuos parciales para fit
+
+## Como chequear la función de enlace
+* Graficar Z^ vs.n^. Si el enlace es adecuado, el grafico debería mostrar aproximadamente una línea recta.
+Este grafico es no informativo para datos binarios.
+
+```{r}
+plot(residuals(fit1,type="working")+fit1$linear.predictors,fit1$linear.predictors);
+```
+
+* Técnica más formal: Agregar n^2 como covariable en el predictor lineal. Si el cambio de deviance es significativo, puede estar indicando:
+  + Mal enlace.
+  + Mala escala para una covariable.
+  + Ambos.
+* Si el cambio en la deviance es no significativo luego el modelo es adecuado.
+
+## Leverage
+* Los elementos diagonales hi de la matriz Hat son los leverages.
+Análogamente a los modelos lineales, se suele considerar que la observación i tiene alto leverage si hi > 2p/n.
+  + Nota: Para MLG, un punto en el extremo del rango de las x no necesariamente tiene leverage alto (pues su valor depende también de W^ ).
+  
+## Distancia de Cook
+* Un valor grande de Di implica que las estimaciones cambian mucho cuando la observación i es retirada la observación i es influyente. 
+  + El Di se compara con 1 o bien entre los valores obtenidos.
+  + Coloque una cota de cook aproximada que tambien sirve para coparacion.
+
+```{r}
+# Leverage: elementos diagonales de matriz HAT
+H=glm.diag(fitglm)$h
+cotalev=2*3/12 #cotaleverage=2*p/n
+plot(H);abline(cotalev,0)
+# Si leverage mayor a cotaleverage entonces tiene alto leverage, estos son puntos potencialmente influyentes.
+
+# Distancia de cook
+Cook=glm.diag(fitglm)$cook
+cotacook=(4/(12-3-2)) #cota=(4/(n-p-2))
+plot(Cook);abline(cotacook,0)
+# Si cook es mayor a la cota luego es un punto influyente.
+
+HCook=cbind(H,Cook)
+HCook
+#hay alguno que sea mayor a 0.5, el ultimo entonces vamos a ver si es influyente
+```
+
+## Residuos deletion (jackknife o likelihood residuals):
+* Grandes valores para los residuos jackknife permiten detectar outliers.
+* glm.diag{res} #Vector de residuos jackknife.
+
+## Q-Q plot y half-normal plot
+* El objetivo es buscar puntos extremos en estos gráficos, fuera de la tendencia general.
+
+```{r}
+# Adicionalmente, veamos la normalidad de los residuos de deviance
+qqnorm(glm.diag(fitglm)$rd); # residuos estandarizados de la deviance
+abline(0,1);
+
+ks.test(glm.diag(fitglm)$rd, "pnorm"); # evaluamos normalidad de residuos
+shapiro.test(glm.diag(fitglm)$rd); # evaluamos normalidad de residuos
+```
+
+* A partir del QQplot se puede decir que poseen distribucion normal.
+* Prueba de hipotesis:
+  + Ho = Poseen distribucion normal.
+  + H1 = No poseen distribucion normal.
+* Para un alfa de 10% la muestra no reune evidencias suficientes para rechazar la hipotesis nula, por lo que los residuos poseen distribucion normal.
+
+## Cómo extraer medidas de diagnóstico en R
+```{r}
+#fit$fitted.values # m^ para el modelo ajustado fit
+#fit$linear.predictors #n^ para el modelo ajustado fit
+#glm.diag{res} #Vector de residuos jackknife.
+#glm.diag{rd} #Vector de residuos de deviance estandarizados.
+#glm.diag{rp} #Vector de residuos de Pearson estandarizados.
+#glm.diag{cook} #Vector de distancias de Cook.
+#glm.diag{h} #Vector de leverages.
+#residuals(fit,type="partial") #Residuos parciales para fit
+#residuals(fit,type="working")+fit$linear.predictors #Z^ para fit
+#halfnorm {Faraway} #Half-normal plot
+```
+
+##  Normal Inversa
+
+```{r}
+#(enlace canónico, link = “1/mu^2”))
+#(link = “identity”)
+#(link = “log”)
+#(link = “inverse”)
+```
+
+## Derivadas:
+
+```{r}
+f=expression(-r*log((1-exp(x))/exp(x)))
+
+f=expression(r*(exp(x)/(1-exp(x))))
+
+f=expression(exp(x))
+
+f=expression(log(x))
+
+f=expression(-log((1/x)))
+
+# Derivada primera
+D(f,'x')
+
+# Derivada segunda
+D(D(f,'x'),'x')
+```
+
+# Plot binomial model
+```{r}
+df1.default.dataset %>% 
+    mutate(is.default.numeric = ifelse(default == "Yes", 
+                                1, 
+                                0)) %>% 
+    
+    ggplot(aes(x = balance, 
+               y = is.default.numeric)) + 
+    geom_point(alpha = 0.2) + 
+    geom_smooth(method = "glm", 
+                method.args = list(family = "binomial"))
+```
+
+
+# Resumen extraccion
+Objeto	        Función lm()	                        Función gls()
+Resumen       	sum.lm <- summary(lm.fit)	            sum.gls <- summary(lm.gls)
+β^	            coef(lm.fit)	                        coef(gls.fit)
+β^,             se^(β^), t−test	vcov(lm.fit)	        vcov(gls.fit)
+IC 95\% para β	confint(lm.fit)	     confint(gls.fit), intervals(gls.fit, which="coef")
+ML	            logLik(lm.fit)	                      logLik(gls.fit, REML=FALSE)
+REML	          logLik(lm.fit, REML=TRUE)	            logLik(gls.fit, REML=TRUE)
+AIC	            AIC(lm.fit)	                          AIC(gls.fit)
+BIC	            BIC(lm.fit)	                          BIC(gls.fit)
+Val ajustados	  fitted(lm.fit)	                     fitted(gls.fit)
+Resi crudos	    residuals(lm.fit, type="response")	residuals(lm.fit, type="response")
+Predicciones	  predicted(lm.fit, newdata)	          predicted(gls.fit, newdata)
+Matriz diseño	  model.matrix(lm.fit)	
+
+#..............................................................................
+#..............................................................................
+#..............................................................................
+# 6 Modelo para datos binarios
+
+## Enlaces mas usados:
+
+```{r}
+#(family = binomial)
+#(link = “logit”) #Logit, enlace canonico
+#(link = “probit”) #Probit 
+#(link = “cloglog”) #Complemento log-log
+```
+
+## Ejemplo Horseschoe crab data
+
+```{r}
+library(glm2)
+datos<- crabs
+datos$flag<- 0
+for (i in 1:nrow(datos)) {
+  if(datos$Satellites[i] > 0){datos$flag[i]=1
+  } else {
+    datos$flag[i]=0
+  }
+}
+sat<- datos$flag
+ancho<-datos$Width
+fit<-glm(sat~ancho,family=binomial) #Modelo link logit canonico
+summary(fit)
+
+```
+* Pr(>|z|):
+  + Ho = B = 0
+  + H1 = B != 0 
+  
+
+
+## Bondad de ajuste en datos desagrupados
+### 1) X^2 de Pearson
+```{r}
+observados<-c(5,4,17,21,15,20,15,14,9,10,11,18,7,4,3,0)
+estimados<-c(3.64,5.31,13.78,24.23,15.94,19.38,15.65,
+13.08,10.36,8.69,14.22,14.77,6.06,4.62,2.35,0.92)
+X2<-sum(((observados-estimados)^2)/estimados)
+X2
+1-pchisq(X2,6)
+```
+* Prueba de hipotesis:
+  + Ho = Modelo es adecuado
+  + H1 = Modelo no es adecuado
+* No hay evidencias en la muestra para rechazar HO se concluye que el modelo es adecuado.
+
+### 2) Test de Hosmer-Lemeshow
+
+```{r}
+library(ResourceSelection)
+hoslem.test(sat,fitted.values(fit))
+```
+* Prueba de hipotesis:
+  + Ho = Modelo es adecuado
+  + H1 = Modelo no es adecuado
+* No hay evidencias en la muestra para rechazar HO se concluye que el modelo es adecuado.
+
+## Interpretacion de los parametros en terminos de chances
+
+```{r}
+exp(coef(fit))
+```
+* La chance de tener un satélite aumenta en un factor de 1.64 (un 64%)
+cuando el ancho del caparazón aumenta 1 cm.
+
+* exp(B1) representa el cociente de chances (odds ratio) de que ocurra
+un éxito cuando la covariable x aumenta en una unidad.
+
+## Intervalos de confianza
+
+### Un intervalo de 100(1-α) % de confianza para es:
+```{r}
+c(0.4972-1.96*0.1017,0.4972+1.96*0.1017)
+# B1^ +- z a/2 * EEBj^
+
+confint.default(fit)
+
+```
+
+### Un intervalo de 100(1-α) % de confianza para el cociente de chances exp(B1) es:
+
+```{r}
+c(exp(0.4972-1.96*0.1017),exp(0.4972+1.96*0.1017)) 
+# exp(B1^ +- z a/2 * EEBj^)
+
+exp(confint.default(fit))
+
+```
+* No interpretar los resultados del intervalo de confianza para B0.
+
+### Intervalo de 100(1-α) % de confianza para p(x):
+* Necesito el intervalo de 100(1-α) % de confianza para n(Xo) = logit(p(Xo))
+```{r}
+plot(ancho, sat, ylab="Probabilidad estimada")
+anchodf <- data.frame(ancho = seq(21,33.5,0.1)) #le doy grilla
+eta <- predict(fit, newdata = anchodf, se.fit = TRUE) #se.fit le digo que guarde los errores estandares del n eta
+prob <- predict(fit, newdata = anchodf, type = "response") #p(x) predicha para nueva grilla
+LIeta <- eta$fit - qnorm(0.975)*eta$se.fit
+LSeta <- eta$fit + qnorm(0.975)*eta$se.fit
+LIp <- exp(LIeta)/(1 + exp(LIeta)) # bandas de confianza para p
+LSp <- exp(LSeta)/(1 + exp(LSeta))
+lines(seq(21,33.5,0.1), prob, lwd=2)
+lines(seq(21,33.5,0.1),LIp,lty=2,lwd=2)
+lines(seq(21,33.5,0.1),LSp,lty=2,lwd=2)
+
+```
+## Modelos logit con variables predictoras categóricas
+* exp(Bi) representa el cociente de chances (odds ratio) entre las
+categorías i y I (categoría de referencia), i = 1,…, I-1.
+* Bi=0 La chance de que ocurra un éxito es la misma en la categoría i
+que en la I.
+
+```{r}
+fav <- c(16,40) #2 respuestas para favorable
+desfav <- c(48,20) #2 respuestas para desfavorable
+trat <- factor(c("placebo","droga")) #Categorias del tratamiento
+fit1 <- glm(cbind(fav,desfav) ~ 1, family = binomial) # asi hay que brindarle los datos para este tipo de modelos. / Estamos en presencia del modelo solo con Bo / MODELO DE INDEPENDENCIA
+summary(fit1)
+1-pchisq(22.377,1)
+
+```
+* Prueba de hipotesis:
+  + Ho = Modelo es adecuado
+  + H1 = Modelo no es adecuado
+* El modelo de independencia no ajusta, luego si hay relacion, entonces ajusto el modelo con los tratamientos 
+
+```{r}
+fit2 <- glm(cbind(fav,desfav) ~ trat, family = binomial)
+summary(fit2)
+```
+* Prueba de hipotesis:
+  + Ho = Modelo es adecuado
+  + H1 = Modelo no es adecuado
+* El modelo ajusta bien.
+* Elige como categoria de referencia la que no figura en la estimacion. Droga. 
+
+```{r}
+fitted.values(fit2)
+exp(coef(fit2)) # OR placebo/droga (eligio/referencia)
+exp(-coef(fit2)) #OR droga/placebo 
+```
+* La chance de tener respuesta favorable en los pacientes que reciben la
+droga es 6 veces esa chance en los que reciben placebo.
+* Si tenemos mas de una categoria siempre OR respecto a la categoria de referencia.
+
+## Modelo de Regresión Logística Múltiple
+### Interpretación de los parámetros
+#### Supongamos que xj es continua.
+* βj = 0 No hay relación entre la probabilidad de éxito y la variable xj.
+* βj > 0 La probabilidad de éxito aumenta a medida que xj aumenta
+(fijas las restantes covariables).
+* βj < 0 La probabilidad de éxito disminuye a medida que xj aumenta
+(fijas las restantes covariables).
+* Además,exp(Bj) representa el cociente de chances de que ocurra un
+éxito cuando la covariable xj aumenta en una unidad (y las demás variables
+explicativas están fijas).
+
+#### Supongamos que xj es una variable indicadora representando el nivel k de un factor de clasificación (y no hay términos de interacción).
+* βj = 0 La chance de que ocurra un éxito es la misma en la categoría k que en la de referencia.
+* βj > 0 La chance de que ocurra un éxito es mayor en la categoría k que en la de referencia.
+* βj < 0 La chance de que ocurra un éxito es menor en la categoría k que en la de referencia.
+* Además,exp(Bj) representa el cociente de chances de que ocurra un éxito
+entre la categoría k y la categoría de referencia (para un valor fijo en las
+demás variables explicativas).
+
+#### Ejemplo raza (blanca y negra) y sexo (femenino y masculino):
+* exp(B1) es el odds ratio condicional entre X e Y, fijando Z.
+Hay asociación homogénea entre X e Y. Hay un odds ratio común para las tablas
+parciales.
+* Cuando B1 = 0 el odds ratio común vale 1. Hay independencia condicional
+entre X e Y dado Z, X e Y son independientes en cada tabla parcial.
+```{r}
+grad<-c(498,878,54,197)
+nograd<-c(298,747,89,463)
+sexo<-c(1,0,1,0)
+raza<-c(1,1,0,0)
+
+fit<-glm(cbind(grad,nograd)~sexo+raza,family=binomial)
+summary(fit)
+```
+* Residual deviance practimante 0, muy baja no hace falta hacer prueba de X^2. Modelo adecuado. 
+
+```{r}
+fitted.values(fit)
+exp(coef(fit))
+#exp(-coef(fit)) interpretaria al reves respecto de la de referencia
+```
+* La chance de graduarse de la raza blanca (referencia) es de 2,76 veces la chance de graduarse en la raza negra manteniendo fijo el sexo.
+
+* La chance de graduarse del sexo femenino (referencia) es de 1,42 veces la chance de graduarse del sexo masculino manteniendo fijo el sexo.
+
+
+## 7 Modelos para datos continuos 
+### Enlaces para respuesta gaussiana, variable respuesta normal:
+```{r}
+#(enlace canónico, link = “identity”) Identidad
+#(link = “log”) Logaritmico
+#(link = “inverse”) Reciproco
+```
+
+### Enlaces para variable respuesta Gamma:
+```{r}
+#(enlace canónico, link = “inverse”) Reciproco
+#(link = “identity”) Identidad
+#(link = “log”) Logaritmico
+```
+
+
+### Ejemplo
+
+```{r}
+datos<-matrix(data=c(-1,-1,-1,674,0,-1,-1,1414,1,-1,-1,3636,-1,0,-1,338,0,0,-1,1022,1,0,-1,1568,-1,1,-1,170,0,1,-1,442,1,1,-1,1140,-1,-1,0,370,0,-1,0,1198,1,-1,0,3184,-1,0,0,266,0,0,0,620,1,0,0,1070,-1,1,0,118,0,1,0,332,1,1,0,884,-1,-1,1,292,0,-1,1,634,1,-1,1,2000,-1,0,1,210,0,0,1,438,1,0,1,566,-1,1,1,90,0,1,1,220,1,1,1,360),ncol=4, nrow= 27, byrow=T)
+datos<- as.data.frame(datos)
+colnames(datos)[1]<- "x1"
+colnames(datos)[2]<- "x2"
+colnames(datos)[3]<- "x3"
+colnames(datos)[4]<- "y"
+x1<-datos$x1
+x2<-datos$x2
+x3<-datos$x3
+y<-datos$y
+```
+
+```{r}
+plot(x1,y)
+plot(x2,y)
+plot(x3,y)
+```
+* Vemos que no hay varianza constante!
+
+#### Ajustamos modelo lineal 
+
+```{r}
+fit1 <- glm(y ~ x1 + x2 + x3)
+summary(fit1)
+```
+
+```{r}
+library(boot)
+plot(fit1$fitted.values,glm.diag(fit1)$rd)
+plot(fit1$fitted.values,y,ylim = c(-600,3700));abline(0,1) #Vemos region de predicciones negativas que esta muy mal.
+plot(fit1$fitted.values,abs(glm.diag(fit1)$rd)) #Problemas estimaciones negativas.
+plot(fit1$fitted.values,(y - fit1$fitted.values)^2) #se ve el aumento de m(y) y v(y) se justifica distribucion gamma.
+qqnorm(glm.diag(fit1)$rd);qqline(glm.diag(fit1)$rd) #No se cumple normalidad
+```
+#### Ajustamos modelo lineal con respuesta transofrmada
+
+```{r}
+fit2 <- glm(log(y) ~ x1 + x2 + x3)
+summary(fit2)
+
+```
+```{r}
+plot(fit2$fitted.values,glm.diag(fit2)$rd)
+```
+* Vemos que no hay tendencia y solo se presenta un valor por debajo de -2. 
+
+#### Ajustamos un glm con distribucion gamma y link =  log
+* Razonable si vemos que la variabilidad aumenta con la media.
+
+```{r}
+fit3 <- glm(y ~ x1 + x2 + x3, family = Gamma(link = "log"))
+summary(fit3)
+```
+* Mejor ajuste como consecuencia de que los errores estandares de la estimacion de los coeficientes son mas chicos.
+* Coeficientes dan muy parecidos en ambos. Hasta Bo que era el que podia variar por ser insesgado es muy parecido.
+* No comparar AIC cuando la distribucion cambia, algunos dicen que no importa mientras la variable respuesta sea la misma.
+```{r}
+plot(fit3$fitted.values,glm.diag(fit3)$rd)
+plot(log(fit3$fitted.values),glm.diag(fit3)$rd) # Transforamcion de escala que permite ver mejor distribuidos los datos en el eje x. No patron :)
+plot(log(fit3$fitted.values),abs(glm.diag(fit3)$rd))
+plot(fit3$fitted.values,(y - fit3$fitted.values)^2) # Se ve la relacion media varianza que propusimos, por lo que seria correcto. Relacion cuadratica del modelo gamma.
+plot(fit3$linear.predictors,fit2$fitted.values);abline(0,1) # Estimaciones de modelo 2 y 3 dan muy parecidas, se cumple lo teorico del principio entre modelo de variable transformada y el MLG
+plot(fitted.values(fit3),y);abline(0,1) # Muy bien predicciones vs observados cerca de la recta de 45 grados.
+```
+* Vemos que no hay patron, por lo que es correcto el modelo.
+
+#### Bondad de ajuste
+```{r}
+library(MASS)
+gamma.dispersion(fit3) # estima ϕ por máxima verosimilitud
+fit3$deviance
+dev_esc <- fit3$deviance/gamma.dispersion(fit3)
+1-pchisq(dev_esc,23)
+```
+* Prueba de hipotesis:
+  + Ho = Modelo es adecuado
+  + H1 = Modelo no es adecuado
+* La muestra no reune evidencias significativas para rechazar la hipotesis nula por lo que se acepta que el modelo es adecuado. 
+
+```{r}
+n2 <-(fit3$linear.predictors)^2 #Prueba formal incluyendo al eta
+fitn2 <- glm(y ~ x1 + x2 + x3 + n2, family = Gamma(link = "log"))
+summary(fitn2)
+```
+* Vemos si la funcion de enlace es adecuada por lo general lo hago cunado hay alguna falla en el modelo.
+* Si el temino de n2 no es significativo, luego el enlace es adecuado. 
+* Prueba de hipotesis:
+  + Ho = El enlace es adecuado
+  + H1 = El enlace no es adecuado
+
+```{r}
+anova(fitn2,test = "F")
+```
+
+* No significativa incorporacion al modelo, el enlace es adecuado.
+```{r}
+anova(fit3,test = "F")
+```
+
+* En la Gamma phi desconocido por eso test F, en binomial qchisk porque phi es conocido
+
+```{r}
+exp(coef(fit3))
+exp(-coef(fit3))
+```
+* Cuando X1 aumenta en una unidad la respuesta aumenta en un factor de 2,32 cuando x2 y x3 permanecen constantes.
+* Cuando X2 disminuye en una unidad la respuesta aumenta en un factor de 1,88 cuando x1 y x2 permanecen constantes.
+* Cuando X3 disminuye en una unidad la respuesta aumenta en un factor de 1,46 cuando x2 y x3 permanecen constantes.

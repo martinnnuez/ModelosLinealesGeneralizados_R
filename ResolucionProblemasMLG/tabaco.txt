@@ -1,0 +1,5 @@
+grupo tumor conteo
+trat presente 21
+trat ausente 2
+control presente 19
+control ausente 13

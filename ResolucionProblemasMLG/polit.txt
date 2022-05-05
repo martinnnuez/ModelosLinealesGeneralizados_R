@@ -1,0 +1,5 @@
+sexo	raza	dem	rep	ind
+masc	blanca	132	176	127
+masc	negra	42	6	12
+fem	blanca	172	129	130
+fem	negra	56	4	15

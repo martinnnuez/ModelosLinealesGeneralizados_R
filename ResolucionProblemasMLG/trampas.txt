@@ -1,0 +1,5 @@
+color sexo conteo
+anaranjada macho 246
+anaranjada hembra 17
+amarilla macho 458
+amarilla hembra 32

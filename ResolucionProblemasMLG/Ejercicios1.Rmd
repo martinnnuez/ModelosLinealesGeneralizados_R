@@ -1,0 +1,1809 @@
+---
+title: "Guia Practica 3"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Librerias
+```{r, include=FALSE}
+library(boot);
+library(car);
+library(GGally);
+library(ggplot2);
+library(MASS);
+library(dplyr)
+```
+
+# Ejercicio 1  
+```{r}
+setwd("C:/Users/marti/Desktop/Modelos Lineales Generalizados/Practico/datos")
+concreto<-read.table("concreto.txt", header = T)
+attach(concreto) #Ahora podemos usar los nombres de las variables directamente sin llamar a concreto
+```
+
+## a- Realice un diagrama de dispersión de la porosidad en función del peso unitario del concreto.
+```{r}
+ggpairs(concreto)
+plot(peso,porosidad)
+```
+* Se puede apreciar una relacion lineal inversa entre las variables.
+
+## b- Realice un análisis de regresión lineal simple para explicar el efecto del peso unitario del concreto sobre la porosidad, en el contexto de los modelos lineales generalizados (utilice la función glm de R).
+```{r}
+fitglm <- glm(porosidad ~ peso); # por defecto es Normal con gc i.e. glm == lm
+summary(fitglm);
+# Uso distribucion Normal y por lo tanto n=g(u)=u
+```
+* Prueba de hipotesis sobre los coeficientes Pr(>|t|):
+  + Ho = B = 0
+  + H1 = B != 0 
+* Ambos coeficientes son distintos de 0. 
+
+## c- Evalúe la adecuación del modelo utilizando gráficos de diagnóstico.
+```{r}
+adecuacionPval <- function(fitglm) {
+	# Ho: El modelo es adecuado
+	return(pchisq(fitglm$deviance/summary(fitglm)$dispersion, fitglm$df.residual, lower.tail=F));
+}
+adecuacionPval(fitglm);
+
+# Nota: 
+all(fitglm$y - fitglm$fitted.values == fitglm$residuals)
+# los residuos del fit son los crudos yi - ui
+
+# Los otros residuos son los estudentizados
+all(glm.diag(fitglm)$rd == fitglm$residuals)
+```
+* El modelo ajusta bien a los datos.
+
+### Residuos parciales
+```{r}
+plot(concreto$peso, residuals(fitglm, type="partial")[,1]);
+
+plot(concreto$peso, residuals(fitglm));
+```
+* Compara los residuos de un modelo que no incluyen una covariable versus esa covariable no incluida, podemos ver que deberiamos ingresar de forma lineal la covariable.
+
+* Covariable versus los residuos del modelo, no hay patron alguno, sugiere que esa variable no tiene mas nada que explicar en el modelo, por lo que no debemos añadir un nuevo temrino de la variable.
+
+### Valores observados vs valores predichos
+```{r}
+#Opcion 1
+plot(fitglm$fitted.values, fitglm$y)+abline(0,1);
+
+#Opcion 2 
+plot(peso, porosidad)+abline(fitglm$coef);
+#Ambos graficos muestran lo mismo de distinta forma
+```
+* Podemos ver como en el grafico se ve lo acertado que es el modelo como consecuencia de lo mucho que se asemejan los valores predichos y observados. Ademas esta semejanza se ve plasmada en la cercania de los datos graficados a la recta de 45º.
+
+### Residuos estandarizados (de deviance) vs valores predichos
+```{r}
+plot(fitglm$fitted.values, glm.diag(fitglm)$rd);
+```
+* Si el modelo es adecuado el grafico no deberia mostrar ninguna tendencia (patron nulo), como en este caso.
+
+### Residuos estandarizados vs orden en que se tomaron las mediciones
+```{r}
+plot(1:nrow(concreto), glm.diag(fitglm)$rd);
+```
+* No se observa patron alguno.
+
+### Residuos estandarizados vs covariable incluida en el modelo 
+```{r}
+plot(peso, glm.diag(fitglm)$rd);
+```
+* Si la covariable esta bien cargada en el modelo no se espera patron alguno, si hay algun patron debemos modificar la forma en que se encuentra incluida en el modelo. En este caso no hay ningun patron, la covariable se encuentra bien incluida en el modelo.
+
+### QQplot para ver si hay alguna tendencia extrema, no analisis de normalidad
+```{r}
+qqnorm(glm.diag(fitglm)$rd); # residuos estandarizados de la deviance
+abline(0,1);
+
+ks.test(glm.diag(fitglm)$rd, "pnorm"); # evaluamos normalidad de residuos
+shapiro.test(glm.diag(fitglm)$rd); # evaluamos normalidad de residuos
+```
+
+* A partir del QQplot se puede decir que poseen distribucion normal.
+* Prueba de hipotesis:
+  + Ho = Poseen distribucion normal.
+  + H1 = No poseen distribucion normal.
+* Para un alfa de 10% la muestra no reune evidencias suficientes para rechazar la hipotesis nula, por lo que los residuos poseen distribucion normal.
+
+* La normalidad se analiza para hallar cualquier tendencia extrema.
+
+## d- Estime el valor de porosidad esperado para un peso unitario de 113 lb/pie3:
+```{r}
+xi <- 113;
+if (range(peso)[1] <= xi && xi <= range(peso)[2]) {
+    print(fitglm$coef[1] + fitglm$coef[2] * xi);
+}
+b=fitglm$coefficients;b
+n<-b[1]+b[2]*113;n
+
+# Si el valor que quiero predecir se encuentra dentro del rango de los datos, entonces que prediga.
+```
+
+## Ejercicio 2
+```{r}
+rm(list=ls());
+
+datos<-read.table("psico.txt", header = T)
+attach(datos)
+```
+
+## a- Ingrese los datos en R y desarrolle un análisis de regresión lineal simple para la respuesta Y en función de la EDAD.
+```{r}
+fitglm <- glm(y ~ edad);
+summary(fitglm);
+```
+* Prueba de hipotesis sobre los coeficientes Pr(>|t|):
+  + Ho = B = 0
+  + H1 = B != 0 
+* Ambos coeficientes son distintos de 0. 
+
+### Veamos si se rechaza la adecuacion del modelo 
+```{r}
+adecuacionPval <- function(fitglm) {
+	# Ho: El modelo es adecuado
+	return(pchisq(fitglm$deviance/summary(fitglm)$dispersion, fitglm$df.residual, lower.tail=F));
+}
+adecuacionPval(fitglm);
+```
+* Prueba de hipotesis sobre la adecuacion del modelo con deviance escalada:
+  + Ho = El modelo es adecuado
+  + H1 = El modelo mas general es adecuado
+* La deviance escalada es el estadistico de cociente de verosimilitud para testear la hipotesis nula de que el modelo es adecuado contra la alternativa de que un modelo mas general es el adecuado. 
+* 0.4334701 el modelo resulta adecuado.
+
+## b- Grafique los valores observados para la variable Y vs. los ajustados por el modelo. ¿Qué es lo que este diagrama de dispersión le sugiere?
+```{r}
+plot(fitglm$fitted.values, y)+
+  abline(0,1)
+```
+* Los valores se alejan levemente de la recta de 45º, se nota una tendencia cuadratica.
+* En promedio ajustan bien.
+
+# Ejercicio 3
+```{r}
+rm(list=ls())
+datos <- tibble(
+  lndosis=c(1.6907,1.7242,1.7552,1.7842,1.8113,1.8369,1.8610,1.8839),
+  muertos= c(6,13,18,28,52,53,61,60),
+  total=c(59,60,62,56,63,59,62,60),
+  prop=muertos/total
+)
+
+lndosis=c(1.6907,1.7242,1.7552,1.7842,1.8113,1.8369,1.8610,1.8839)
+muertos= c(6,13,18,28,52,53,61,60)
+total=c(59,60,62,56,63,59,62,60)
+prop=muertos/total
+adecuacionPval <- function(fitglm) {
+	# Ho: El modelo es adecuado
+	return(pchisq(fitglm$deviance/summary(fitglm)$dispersion, fitglm$df.residual, lower.tail=F));
+}
+```
+
+## a- Grafique la proporción de individuos muertos en función del logaritmo de la dosis.
+```{r}
+plot(lndosis,prop, xlab="ln dosis", ylab="proporcion de individuos muertos")
+```
+* Se ve una relacion aproximadamente lineal
+
+## b- Ajuste un modelo lineal generalizado adecuado para este conjunto de datos, chequeando la función de enlace utilizada.
+* (family = binomial) = (link = “logit”) #Logit, enlace canonico
+* (link = “probit”) #Probit 
+* (link = “cloglog”) #Complemento log-log
+
+### Enlace logit:
+```{r}
+fit1<-glm(cbind(muertos,total-muertos)~lndosis,family=binomial) 
+summary(fit1)
+
+#Con datos subi yo:
+fit9<-glm(cbind(datos$muertos,datos$total-datos$muertos)~datos$lndosis,family=binomial) 
+summary(fit9)
+
+adecuacionPval(fit1);
+```
+* Modelo adecuado, pvalor bajo de todas formas. 
+
+### Enlace probit:
+```{r}
+fit2<- glm(cbind(muertos,total-muertos)~lndosis,family=binomial(link = "probit")) 
+summary(fit2)
+adecuacionPval(fit2);
+```
+* Modelo adecuado.
+
+### Enlace complemento loglog:
+```{r}
+fit3<-glm(cbind(muertos,total-muertos)~lndosis,family=binomial(link = "cloglog")) 
+summary(fit3)
+adecuacionPval(fit3);
+```
+* Modelo con mayor p valor
+ 
+## Comparo los AIC  de los modelos para ver cual es el que genera mejor ajuste.
+```{r}
+AIC(fit1,fit2,fit3)
+```
+* Elegimos el fit 3 por poseer el menor AIC
+
+## c- Con las estimaciones obtenidas, prediga la proporción de escarabajos muertos cuando log(dosis) = 1.75 (dosis máxima recomendada para el cultivo).
+ 
+```{r}
+fit3$coefficients
+b<-coef(fit3)
+n<-b[1]+b[2]*1.75  #predictor lineal fit3 cuando lndosis=1.75
+
+# η = log(− log(1 − µ))
+1-exp(-exp(n))
+```
+* La proporcion de escarabajos muertos cuando el log dosis es 1.75 es de 0.3
+
+## d- ¿Cuál es la LD50, es decir, la dosis que provoca la muerte del 50% de los individuos?
+```{r}
+# enlace complemento log log
+# media = 0.5 = p 
+(log(−log(1−0.5)) - b[1])/b[2] #dosis
+exp((log(−log(1−0.5)) - b[1])/b[2]) #ln dosiss
+```
+* ln dosis = 1.77
+* dosis = 5.92
+
+```{r}
+# enlace logit
+# p=0.5
+# log(p/1-p)= log(1)= 0
+b1=fit1$coefficients
+lndosis= -b1[1]/b1[2];lndosis #dosis
+dosis=exp(lndosis);dosis #ln dosis
+```
+* ln dosis = 1.77
+* dosis = 5.88
+
+```{r}
+# enlace probit
+# p=0.5
+probit=pnorm(-0.5)
+#pnorm(0.025, mean = 0, sd = 1, lower.tail = TRUE)
+b2=fit2$coefficients
+lndosis= (probit-b2[1])/b2[2];lndosis #dosis
+dosis=exp(lndosis);dosis #ln dosis
+```
+* ln dosis = 1.78
+* dosis = 5.96
+
+### Prueba formal sobre el enlace:
+```{r}
+eta2=(fit3$linear.predictors)^2
+fit3n<-glm(cbind(muertos,total-muertos)~lndosis+eta2,family=binomial(link = "cloglog"))
+summary(fit3n)
+
+1-pchisq(fit3n$deviance,fit3n$df.residual) #No hay evidencia para rechazar adecuacion del modelo
+anova(fit3n, test="Chisq")# eta no significativo entonces eleccion enlace canonico estaba bien
+```
+* Prueba de hipotesis sobre la diferencia de deviance:
+  + Ho = La adicion del nuevo termino no aporta a lo que explica el modelo, por lo que no es necesario añadirlo. Cambio en la deviance no es significativo con la adicion del nuevo temrino.
+  + H1 = La adicion del nuevo termino aporta a lo que explica el modelo, por lo que es necesario añadirlo. Cambio en la deviance es significativo con la adicion del nuevo termino.
+
+* La adicion del eta^2 es no significativa, esto quiere decir que el cambio en la deviance al agregar el nuevo termino es no significativo, por lo que no es necesario añadirlo, en este caso se concluye que el modelo es adecuado.
+
+* La adicion del eta^2 es significativa, esto quiere decir que el cambio en la deviance al agregar el nuevo termino es significativo, por lo que es necesario añadirlo, en este caso estaria indicando una mala eleccion del enlace, una mala escala en una covariable o ambos.
+
+* Por lo tanto el modelo es adecuado.
+
+# Ejercicio 4
+```{r}
+rm(list=ls());
+ataques<-read.table("ataques.txt", header = T)
+attach(ataques) #Ahora podemos usar los nombres de las variables directamente sin llamar a concreto
+```
+
+
+## a- Encuentre un modelo apropiado que utilice el valor de ck para el diagnóstico de ataques cardíacos.
+### Analisis exploratorio
+```{r}
+plot(ck,si/(si+no), xlab="nivel de creatinina quinasa", ylab="proporcion de ataque cardiaco")
+```
+* A medida que aumenta el nivel de creatina quinasa aumenta la proporcion de ataques cardiacos
+
+### Modelo
+```{r}
+fit1<-glm(cbind(si,no)~ck,family=binomial)
+summary(fit1)
+```
+* Prueba de hipotesis sobre los coeficientes Pr(>|t|):
+  + Ho = B = 0
+  + H1 = B != 0 
+* Ambos coeficientes son distintos de 0. 
+
+```{r}
+adecuacionPval <- function(fitglm) {
+	# Ho: El modelo es adecuado
+	return(pchisq(fitglm$deviance/summary(fitglm)$dispersion, fitglm$df.residual, lower.tail=F));
+}
+adecuacionPval(fit1);
+
+1-pchisq(fit1$deviance,fit1$df.residual)
+```
+* Prueba de hipotesis sobre la adecuacion del modelo con deviance escalada:
+  + Ho = El modelo es adecuado
+  + H1 = El modelo mas general es adecuado
+* La deviance escalada es el estadistico de cociente de verosimilitud para testear la hipotesis nula de que el modelo es adecuado contra la alternativa de que un modelo mas general es el adecuado. 
+*  p valor = 5.822516e-05 el modelo resulta no adecuado.
+
+
+* Prueba de hipotesis de adecuacion del modelo con deviance:
+  + Ho = El modelo es adecuado
+  + H1 = El modelo mas general es adecuado
+* El modelo no es adecuado
+
+* Para las distribuciones poisson y binomial (este caso) la deviance y deviance escalada coinciden ya que el phi es = 1 , por lo que las pruebas son identicas. El caso valido es el de la deviance escalada.
+
+### Analisis de los residuos del modelo no adecuado: Residuos estandarizados vs valores predichos y vs predictor lineal.
+```{r}
+plot(fit1$fitted.values,glm.diag(fit1)$rd)
+plot(fit1$linear.predictors,glm.diag(fit1)$rd)
+plot(ataques$ck, residuals(fit1));
+
+# Grafico de residuos vs los valores observados, si hay tendencia quiere decir que puede seguir explicando cosas.
+plot(ataques$ck, residuals(fit1));
+```
+
+* Si el modelo es adecuado el grafico no deberia mostrar tendencia, patron nulo.
+* Se puede observar un patron, es decir que esa covariable puede seguir explicando parte de la variabilidad de los datos.
+* Los ultimos dos graficos similares, buscan explicar lo mismo.
+
+### Ajuste modelo 2 
+```{r}
+fit2<-glm(cbind(si,no)~ck+I(ck^2),family=binomial)
+summary(fit2)
+dev2=fit2$deviance
+gl2=fit2$df.residual
+
+adecuacionPval(fit2);
+
+plot(fit2$fitted.values,glm.diag(fit2)$rd)
+plot(fit2$linear.predictors,glm.diag(fit2)$rd)
+plot(ataques$ck, residuals(fit2));
+```
+* Prueba de hipotesis sobre la adecuacion del modelo con deviance escalada:
+  + Ho = El modelo es adecuado
+  + H1 = El modelo mas general es adecuado
+* La deviance escalada es el estadistico de cociente de verosimilitud para testear la hipotesis nula de que el modelo es adecuado contra la alternativa de que un modelo mas general es el adecuado. 
+*  p valor = 0.08026781 el modelo resulta no adecuado conciderando un nivel de singificancia del 10%.
+
+```{r}
+plot(fit2$fitted.values,glm.diag(fit2)$rd)
+plot(fit2$linear.predictors,glm.diag(fit2)$rd)
+```
+* Se observa una tendencia cuadratica, por lo que se incluira otro termino para ver si mejora el modelo.
+
+### Ajuste modelo 3
+```{r}
+fit3<-glm(cbind(si,no)~ck+I(ck^2)+I(ck^3),family=binomial)
+summary(fit3)
+
+adecuacionPval(fit3)
+
+
+```
+* En este ultimo caso, la muestra no reune evidencias significativas para rechazar la hipotesis nula a un nivel de significancia del 10%, por lo que se concluye que el modelo es adecuado.
+
+* Los terminos agregados al modelo en la prueba de hipotesis sobre los coeficientes resultan significativos, por lo que se concluye que vale la pena agregar estos terminos al modelo, es decir que tiene sentido.
+```{r}
+plot(fit3$fitted.values,glm.diag(fit3)$rd)
+plot(fit3$linear.predictors,glm.diag(fit3)$rd)
+```
+* Desaparece la tendencia o patron en los residuos, por lo que el modelo es adecuado.
+
+#### Analisis de la diferencia de deviance entre el modelo1 y el modelo3
+```{r}
+anova(fit1,fit3,test="Chisq")
+```
+* Prueba de hipotesis sobre la diferencia de deviance:
+  + Ho = El modelo mas corto es adecuado
+  + H1 = El modelo mas largo es adecuado
+* Se puede chequear la utilidad del modelo M2 (largo), en relacion a M1 (corto) mediante la diferencia de deviance.
+* Con un p valor de 8.025e-08 concluimos que la muestra reune evidencias suficientes para rechazar la hipotesis nula por lo que se concluye que el modelo mas largo es adecuado.
+
+#### Comparacion modelos con AIC
+```{r}
+AIC(fit1,fit2,fit3) #elegimos el de menor AIC
+```
+* El modelo con el termino cubico es el que mejor ajusta ya que alcanza el menor valor de AIC.
+
+### Conclucion grafica
+```{r}
+plot(ck,si/(si+no))
+lines(ck,fitted.values(fit1), col="blue")
+lines(ck,fitted.values(fit2),col="green")
+lines(ck,fitted.values(fit3),col="red")
+```
+* Vemos que el modelo 3 ajusta mejor a los datos.
+
+## b- Estime la probabilidad de que una persona con valor de ck de 120 haya sufrido un ataque cardíaco.
+* Cabe destacar que nos encontramos ante un modelo del tipo binomial con funcion de enlace logit
+```{r}
+b<-coef(fit3);b
+n<-b[1]+b[2]*120+b[3]*120^2+b[4]*120^3;n  #predictor lineal fit3 cuando ck=120
+exp(n)/(1+exp(n))
+```
+* La probabilidad de que una persona conc ck de 120 sufra un ataque cardiaco es de 0.86.
+
+## Ajusta un modelo con respuesta transformada y lo compara con el ultimo modelo
+```{r}
+fitlog<-glm(cbind(si,no)~log(ck),family=binomial)
+summary(fitlog)
+devlog=fitlog$deviance
+gllog=fitlog$df.residual
+1-pchisq(devlog,gllog)
+plot(fitlog$fitted.values,glm.diag(fitlog)$rd)
+plot(fitlog$linear.predictors,glm.diag(fitlog)$rd)
+
+plot(ck,si/(si+no))
+lines(ck,fitted.values(fit3),col="red")
+lines(ck,fitted.values(fitlog),col="blue")
+
+b<-coef(fitlog)
+b
+n<-b[1]+b[2]*log(120)
+n
+exp(n)/(1+exp(n))
+
+plot(log(ck),si/(si+no))
+lines(log(ck),fit3$fitted.values, col="red")
+lines(log(ck),fitlog$fitted.values,col="blue")
+
+plot(ck,si/(si+no))
+#lines(ck,fit1$fitted.values)
+lines(ck,fit3$fitted.values,col="red")
+lines(ck,fitlog$fitted.values,col="blue")
+
+AIC(fit3,fitlog)
+
+fitsq<-glm(cbind(si,no)~sqrt(ck),family=binomial)
+summary(fitsq)
+1-pchisq(17.786,10)
+plot(fitsq$fitted.values,glm.diag(fitsq)$rd)
+plot(fitsq$linear.predictors,glm.diag(fitsq)$rd)
+
+AIC(fit3,fitlog, fitsq)
+```
+
+* El modelo logaritmico resulta adecuado.
+* Se obitene un AIC mas bajo con el modelo logaritmico por lo que seria mejor que el modelo que incluye el termino cubico.
+
+# Ejercicio 5
+```{r}
+rm(list=ls());
+
+datos<-read.table("peretroide.txt", header = T)
+attach(datos)
+datos[datos$sexo == 1, "sexo"] <- "Macho"
+datos[datos$sexo == 0, "sexo"] <- "Hembra"
+attach(datos);
+prop <- muertos / total;
+datos$prop <- prop
+
+#Cargo yo:
+datos2 <- tibble(
+  dosis=c(1,2,4,8,16,32,1,2,4,8,16,32),
+  sexo=c(rep("Macho",6),rep("Hembra",6)),
+  muertos=c(1,4,9,13,18,20,0,2,6,10,12,16),
+  total=c(rep(20,12)),
+  prop=muertos/total
+)
+```
+## a- Realice un análisis descriptivo ilustrando con gráficos.
+```{r}
+ggp <- ggplot();
+ggp <- ggp + geom_point(data=datos, aes(x=dosis, y=prop, color=as.factor(sexo))); ggp
+```
+* Se ve en los datos una tendencia cuadratica, la cual se intetara corregir a partir de la transformacion de los datos.
+```{r}
+log2d <- log(dosis, 2);
+datos$log2d <- log2d;
+ggp <- ggplot();
+ggp <- ggp + geom_point(data=datos, aes(x=log2d, y=prop, color=as.factor(sexo))); ggp
+```
+
+* De esta forma tomando el log2 de la dosis se ve una relacion lineal entre las proporsiones y la dosis.
+
+## b- Dado que las dosis son potencias de 2, defina el modelo lineal generalizado para realizar el ajuste de una regresión logística usando el log2(dosis).
+```{r}
+fitglm <- glm(cbind(muertos, total-muertos) ~ log2d+sexo, family="binomial");
+summary(fitglm)
+#se pide regresion logistica, lo cual es binomial con enlace logit (canonico)
+```
+* Prueba de hipotesis sobre los coeficientes Pr(>|t|):
+  + Ho = B = 0
+  + H1 = B != 0 
+* Ambos coeficientes son distintos de 0. 
+
+### Veamos si se rechaza la adecuacion del modelo 
+```{r}
+adecuacionPval <- function(fitglm) {
+	# Ho: El modelo es adecuado
+	return(pchisq(fitglm$deviance/summary(fitglm)$dispersion, fitglm$df.residual, lower.tail=F));
+}
+adecuacionPval(fitglm);
+```
+* Prueba de hipotesis sobre la adecuacion del modelo con deviance escalada:
+  + Ho = El modelo es adecuado
+  + H1 = El modelo mas general es adecuado
+* La deviance escalada es el estadistico de cociente de verosimilitud para testear la hipotesis nula de que el modelo es adecuado contra la alternativa de que un modelo mas general es el adecuado. 
+* 0.6623857 el modelo resulta adecuado.
+
+## c- Realice el análisis en R y obtenga conclusiones.
+
+### Veamos como ajustan los datos y hacemos algunos graficos de diagnostico.
+
+```{r}
+plot(log2d, prop)+
+  lines(log2d, fitglm$fitted.values)
+```
+* Se nota que ajustan bastante bien los datos
+
+
+### Valores predichos vs valores observados
+```{r}
+plot(fitglm$fitted.values, prop);
+abline(0,1);
+```
+
+* Los valores predichos se observan muy cercanos a la recta de 45º lo cual muestra el buen ajuste del modelo.
+
+### Residuos estandarizados (de deviance) vs valores predichos
+```{r}
+plot(fitglm$fitted.values, glm.diag(fitglm)$rd);
+```
+
+* No se observa patron alguno
+
+### Residuos estandarizados vs indice (u orden)
+```{r}
+plot(1:nrow(datos), glm.diag(fitglm)$rd);
+```
+
+
+## 
+```{r}
+summary(fitglm);
+# cada Pr(>|z|) es lo mismo que hacer
+lht(fitglm,c(0,1,0),test="Chisq")
+```
+
+### Chance
+```{r}
+exp((fitglm$coefficients))
+exp((fitglm$coefficients)[3]);
+```
+* La chance de morir siendo Macho (exito en el que figura en la salida) es 3.0064 veces mayor a la de morir siendo hembra (fracaso en la categoria de referencia), manteniendo constante el log2d. Por cada Hembra, mueren 3 Machos.
+
+# Ejercicio 6 
+```{r}
+rm(list=ls());
+datos<-read.table("sobrevida.txt", header = T)
+attach(datos)
+tipo=as.factor(tipo)
+
+#Cargo yo:
+datos<- tibble(
+  tipo=c(rep("Estomago",13),rep("Bronquio",17),rep("Colon",17),rep("Ovario",6),rep("Mama",11)),
+  tiempo=c(124,42,25,45,412,51,1112,46,103,876,146,340,396,81,461,20,450,245,166,63,64,155,859,151,166,37,223  ,138,72,245,248,377,189,1843,180,537,519,455,406,365,942,776,372,163,101,20,283,1234,89,201,356,2970,456,1235,24,1581,1166,40,727,3808,791,1804,3460,719)
+)
+```
+
+##  a- Realice un análisis exploratorio del tiempo de sobrevida para los distintos órganos.
+
+```{r}
+plot(tipo,tiempo)
+```
+* Podemos ver que mama y ovario poseen mayores desvios estandares que bronquios colon y estomago.
+* Bronquios es el que menores tiempos de sobrevida permite apreciar.
+* A priori se espera hallar diferencias significativas entre los organos para el tiempo de sobrevida.
+* Vemos que las varianzas no son homogeneas
+
+## b- Ajuste un modelo clásico normal.
+```{r}
+# No colocamos mas nada por lo que se hace un modelo normal clasico con funcion de enlace identidad.
+fit<-glm(tiempo~tipo)
+summary(fit)
+
+plot(fitted.values(fit),glm.diag(fit)$rd)
+```
+* Los que dan diferencias significativas, son los que logran diferenciarse del resto, mientras los que no dan diferencias significativas, no logran diferenciarse del resto.
+
+* En el grafico de residuos se observa una tendencia o patron, por lo que el modelo no es adecuado, tendencia de embudo. No hay homogeneidad de varianzas.
+
+```{r}
+adecuacionPval <- function(fitglm) {
+	# Ho: El modelo es adecuado
+	return(pchisq(fitglm$deviance/summary(fitglm)$dispersion, fitglm$df.residual, lower.tail=F));
+}
+adecuacionPval(fit);
+```
+* El modelo resulta adecuado, pero aun hay cosas que falta explicar, como la tendencia que vemos en los residuos, habla de que no hay homogeneidad de varianzas.
+
+## c- Explore la relación media-varianza y ajuste un modelo que resulte adecuado para este conjunto de datos.
+* Ve relacion media y varianza y vemos si el modelo lineal propuesto es adecuado.
+* Recordar que el modelo lineal propone una relacion media varianza constante.
+
+```{r}
+media<-tapply(tiempo,tipo,mean)  #buscar estudiar la relacion media c/ varianza
+varianza<-tapply(tiempo,tipo,var)
+plot(media,varianza)          #existe una relacion entre media y varianza
+tapply(tiempo,tipo,sd)/tapply(tiempo,tipo,mean) #calculo de CV=DS/Media aprox.1
+```
+* En el grafico podemos ver una relacion lineal o cuadratica entre media y varianza, directamente proporcional, lo que sugiere que el modelo normal propuesto no es el adecuado, ya que supone que no hay relacion entre la media y la varianza.
+
+* Como el coeficiente de variacion se mantiene relativamente constante, POR ESTE MOTIVO DIGO QUE PUEDO AJUSTAR UNA GAMMA.
+
+### Cancu relacion media varianza
+```{r}
+# Estudiamos la relacion media-varianza
+by(datos$tiempo, datos$tipo, function(x) { c(Mean=mean(x), Cuad=mean(x)^2, Cub=mean(x)^3, Var=var(x)) } )
+```
+* Pareciera que esta mas cercana la media^2 a la varianza (lo que indicaria que es mas una Gamma que una Normal Inversa)
+
+
+### Proponemos un modelo adecuado, en donde haya una relacion media varianza como el modelo Gamma
+* Recordar que en modelo gama la realcion media varianza es cuadratica
+```{r}
+fit1<-glm(tiempo~tipo,family=Gamma(link="identity")) #CV~1,Gamma c/ link=identidad
+summary(fit1)
+```
+
+### Vemos adecuacion del modelo
+#### Residuos estandarizados vs valores predichos
+```{r}
+plot(fitted.values(fit1),glm.diag(fit1)$rd)
+```
+* No se observan tendencias en el grafico de residuos, indicio de que el modelo seria adecuado.
+
+#### Adecuacion con deviance escalada:
+```{r}
+adecuacionPval <- function(fitglm) {
+	# Ho: El modelo es adecuado
+	return(pchisq(fitglm$deviance/summary(fitglm)$dispersion, fitglm$df.residual, lower.tail=F));
+}
+adecuacionPval(fit1);
+```
+* Adecuacion 1, con la deviance escalada, no se porque da distinto a la de abajo.
+
+#### Adecuacion con deviance escalada, pero calcula de otra forma:
+
+```{r}
+phi=gamma.dispersion(fit1) 
+1-pchisq(fit1$deviance/phi,fit1$df.residual)      #adecuacion del modelo Gamma c/ link identidad
+
+
+```
+* Adecuacion 2, con deviance escalada pero phi calculado desde otro lado.
+
+#### Estimacion del phi para Gamma y vemos adecuacion
+```{r}
+summary(fit1)
+library(MASS)
+# Estimacion del phi
+gamma.dispersion(fit1) # estima ϕ por máxima verosimilitud
+fit1$deviance
+fit1$df.residual
+# deviance escalada y bondad de ajuste
+dev_esc <- fit1$deviance/gamma.dispersion(fit1)
+dev_esc
+1-pchisq(dev_esc,fit1$df.residual) #Ho:modelo adecuado
+```
+
+#### Vemos si la covariable es importante para describir la respuesta
+```{r}
+anova(fit1,test="F")        #aqui el test es F por que phi es desconocido
+```
+* Adecuacion 3, veo si la covariable es importante para describir tiempo de vida
+
+* Se concluye que el modelo es adecuado y que es significativa la adicion de la covariable
+
+## Contrastes en GLM
+```{r}
+library(car)
+lht(fit1,c(0,1,0,-1,0), test="F") #comparo colon y mama
+lht(fit1,c(0,0,0,1,1), test="F") 
+lht(fit1,c(0,0,1,0,-1), test="F")
+```
+* Los que dieron diferencia significativa ya lo sabemos respecto de la categoria de referencia
+* Aca planteamos otros tipos de constrastes entre otras de ellas y vemos el p valor que da y vemos si hay diferencias significativas entre ellos
+* Aca planteamos prueba de hipotesis pero ese numero si lo sacamos de diferencia no seria interpretable porque el de referencia es bronqueo.
+
+## Ajusta un modelo Gamma con enlace canonico, que es el link inverso
+```{r}
+fit2<- glm(tiempo~tipo, family=Gamma)# Usa el enlace canonico que es el link inverso
+summary(fit2)
+# MLG Gamma c/ link inverso =1/mu
+```
+### Vemos adecuacion del modelo
+
+#### Residuos estandarizados vs valores predichos
+```{r}
+plot(fitted.values(fit2),glm.diag(fit2)$rd)
+```
+* No se observan tendencias en el grafico de residuos, indicio de que el modelo seria adecuado.
+
+#### Adecuacion con deviance escalada:
+```{r}
+adecuacionPval <- function(fitglm) {
+	# Ho: El modelo es adecuado
+	return(pchisq(fitglm$deviance/summary(fitglm)$dispersion, fitglm$df.residual, lower.tail=F));
+}
+adecuacionPval(fit2);
+```
+* Adecuacion 1, con la deviance escalada, no se porque da distinto a la de abajo. El modelo es adecuado.
+
+#### Adecuacion con deviance escalada, pero calcula de otra forma:
+```{r}
+phi=gamma.dispersion(fit2) 
+1-pchisq(fit2$deviance/phi,fit2$df.residual)      #adecuacion del modelo Gamma c/ link identidad
+```
+* Adecuacion 2, con deviance escalada pero phi calculado desde otro lado. El modelo es adecuado
+
+#### Vemos si la covariable es importante para describir la respuesta
+```{r}
+anova(fit2,test="F")        #aqui el test es F por que phi es desconocido
+```
+* Adecuacion 3, veo si la covariable es importante para describir tiempo de vida
+
+* Se concluye que el modelo es adecuado y que es significativa la adicion de la covariable.
+
+### cual modelo da mejor
+```{r}
+AIC(fit1,fit2)
+```
+* Da igual AIC
+
+* Ella se quedaria con funcion de enalce identidad por que la interpretacion es mucho mas facil
+
+
+### Contrastes 
+```{r}
+library(car) 
+lht(fit2,c(0,1,0,-1,0),test="F")
+lht(fit2,c(0,0,0,1,-1),test="F") 
+lht(fit2,c(0,0,1,0,-1),test="F")
+lht(fit2,c(0,1,0,0,-1),test="F") 
+lht(fit2,c(0,0,1,-1,0),test="F")
+lht(fit2,c(0,1,-1,0,0),test="F") 
+```
+
+
+# Ejercicio 7 
+```{r}
+rm(list=ls());
+datos<-read.table("sida.txt", header = T)
+attach(datos)
+adecuacionPval <- function(fitglm) {
+	# Ho: El modelo es adecuado
+	return(pchisq(fitglm$deviance/summary(fitglm)$dispersion, fitglm$df.residual, lower.tail=F));
+}
+```
+
+## a- Grafique el número de nuevos casos en función del año.
+```{r}
+plot(1980+t, casos);
+```
+* primero crecimiento y luego pequeño decrecimiento
+
+## b- Ajuste un MLG que corresponda al modelo recién planteado, evaluando la adecuación del modelo mediante técnicas de diagnóstico.
+
+### Se va a ajustar con Poisson ya que son datos de conteos.
+```{r}
+fitglm1 <- glm(casos ~ t, family="poisson");
+adecuacionPval(fitglm1);
+```
+* La muestra reune evidencias suficientes para rechazar la hipotesis nula a un nivel de significancai del 5% por lo que se concluye que el modelo no es adecuado. 
+
+```{r}
+#como el phi vale 1 no debe ser estimado
+1-pchisq(fitglm1$deviance,fitglm1$df.residual) #No adecuacion del modelo p valor muy bajo
+```
+
+* Se concluye lo mismo.
+
+```{r}
+plot(fitglm1$fitted, glm.diag(fitglm1)$rd);
+abline(2,0);
+abline(-2,0);
+
+plot(datos$t, glm.diag(fitglm1)$rd);
+```
+* Los residuos dan valores muy altos y hay una tendencia en el grafico, el modelo no es adecuado.
+
+* Y ademas al haber tendencia en el grafico de residuos vs la covariable, puede seguir explicando y aportando al modelo.
+
+### Se agrega un termino cuadratico
+```{r}
+# Veamos de agregar un termino cuadratico
+fitglm2 <- glm(casos ~ t+I(t^2), family="poisson");
+adecuacionPval(fitglm2);
+
+```
+* Se concluye que el modelo es adecuado
+
+```{r}
+plot(fitglm2$fitted, glm.diag(fitglm2)$rd);
+abline(2,0);
+abline(-2,0);
+```
+* El grafico de residuos mejora notablemente, indicio de que el modelo es adecuado.
+```{r}
+summary(fitglm2)
+```
+### Se evalua la adicion de el nuevo termino
+```{r}
+anova(fitglm2, test="Chisq")
+```
+* Ambos temrinos son significativos, su incorporacion al modelo tiene sentido.
+
+### Agregua el eta y hace modelo (prueba formal)
+```{r}
+eta2=(fitglm$linear.predictors)^2
+
+fit2n<- glm(casos~t+I(t^2)+eta2, family= poisson)
+
+summary(fit2n)
+
+```
+* Si el coeficiente del eta no es significativo luego modelo bien elegido
+* Viendo WALL veo que no es significativo el coeficiente que acompaña al eta entonces modelo adecuado
+
+```{r}
+#como el phi vale 1 no debe ser estimado
+1-pchisq(fit2n$deviance,fit2n$df.residual) #No hay evidencia para rechazar adecuacion del modelo
+
+anova(fit2n, test="Chisq")# eta no significativo entonces eleccion enlace canonico estaba bien
+```
+*  No hay evidencia para rechazar adecuacion del modelo
+* eta no significativo entonces eleccion enlace canonico estaba bien
+
+
+### Hace un poco de los leverage
+```{r}
+# Leverage: elementos diagonales de matriz HAT
+H=glm.diag(fitglm)$h
+cotalev=2*3/12 #cotaleverage=2*p/n
+plot(H);abline(cotalev,0)
+# Si leverage mayor a cotaleverage entonces tiene alto leverage, estos son puntos potencialmente influyentes.
+
+# Distancia de cook
+Cook=glm.diag(fitglm)$cook
+cotacook=(4/(12-3-2)) #cota=(4/(n-p-2))
+plot(Cook);abline(cotacook,0)
+# Si cook es mayor a la cota luego es un punto influyente.
+
+HCook=cbind(H,Cook)
+HCook
+#hay alguno que sea mayor a 0.5, el ultimo entonces vamos a ver si es influyente
+```
+
+## c- A partir del modelo seleccionado concluya en términos de la pregunta de interés.
+```{r}
+summary(fitglm)
+#Opcion 2 
+plot(t, casos);
+plot(t, fitglm$fitted.values)
+#Ambos graficos muestran lo mismo de distinta forma
+```
+* Se concluye que la tasa de generacion de nuevos casos va disminuyendo como consecuencia de que el termino cuadratico posee una pendiente negativa lo que tiende a reducir los casos de sida que se dan, para valores bajos de t este termino no genera gran influencia pero a medida que aumenta t el temrino influye de manera notoria estabilizando los casos neuvos de sida que se dan. Por eso la curva describe una meseta a medida que se aumenta el t. Ademas en el grafico de valores predichos podemos ver como la pendiente de la curva tiende a estabilizarse en una meseta que da la idea de que se reduce la tasa de generacion de casos.  
+
+#### Se agrega termino cubico y ve ajuste
+
+```{r}
+# Veamos de agregar un termino cubico
+fitglm3 <- glm(casos ~ t+I(t^2)+I(t^3), family="poisson");
+adecuacionPval(fitglm3);
+
+plot(fitglm$fitted, glm.diag(fitglm)$rd);
+abline(2,0);
+abline(-2,0);
+
+plot(datos$t, glm.diag(fitglm)$rd);
+```
+* Sigue habiendo tendencia no mejora mucho respecto del anterior, hacemos prueba de diferencia de deviances.
+```{r}
+anova(fitglm2,fitglm3,test="Chisq") # Cuando el phi es conocido
+```
+* Prueba de hipotesis sobre la diferencia de deviance:
+  + Ho = El modelo mas parsimonioso es adecuado. No es necesario añadir mas terminos.
+  + H1 = El modelo mas complejo es adecuado. Es necesario añadir mas terminos.
+* Se puede chequear la utilidad del modelo M2 (largo o complejo), en relacion a M1 (corto o parsimonioso) mediante la diferencia de deviance.
+* Con un p valor de 0.23 concluimos que la muestra no reune evidencias suficientes para rechazar la hipotesis nula por lo que se concluye que el modelo parsimonioso es adecuado.
+
+# Ejercicio 8 
+```{r}
+
+```
+
+
+## a- Ajuste un modelo logit apropiado para esta situación, describiendo formalmente el modelo y justicando claramente su elección.
+```{r}
+
+```
+
+
+## b- Interprete los resultados obtenidos, realizando estimaciones de cocientes de chances.
+```{r}
+
+```
+
+
+## c- Dé expresiones generales para la probabilidad de contraer la enfermedad en términos de la edad, para los distintos niveles de las variables incluidas en el modelo elegido.
+```{r}
+
+```
+
+
+# Ejercicio 9 
+```{r}
+raza= as.factor(c("blanca","blanca","negra","negra"))
+azt= as.factor(c("inmediatamente","mas adelante","inmediatamente","mas adelante"))
+sintomas= c(14,32,11,12)
+nosintomas= c(93,81,52,43)
+prop= (sintomas)/(sintomas+nosintomas)
+
+#Cargue yo:
+datos2 <- tibble(
+  raza= as.factor(c("blanca","blanca","negra","negra")),
+  azt= as.factor(c("inmediatamente","mas adelante","inmediatamente","mas adelante")),
+  sintomas= c(14,32,11,12),
+  nosintomas= c(93,81,52,43),
+  total= (sintomas+nosintomas),
+  prop= (sintomas)/(total)
+)
+```
+## 
+```{r}
+ggp <- ggplot();
+ggp <- ggp + geom_point(aes(x=raza, y=prop, color=as.factor(azt))); ggp
+```
+* Los que se atienden mas adelante tienen mayores chances de contraer sintomas
+* Los de raza negra poseen un menor desvio.
+* Se puede apreciar una posbilidad de interaccion 
+
+## a- Presente un modelo logit apropiado para esta situación, describiendo el ajuste realizado y justificando su elección.
+```{r}
+fitglm <- glm(cbind(sintomas, nosintomas) ~ azt+raza, family="binomial");
+summary(fitglm)
+#se pide regresion logistica, lo cual es binomial con enlace logit (canonico)
+```
+* Prueba de hipotesis sobre los coeficientes Pr(>|t|):
+  + Ho = B = 0
+  + H1 = B != 0 
+* El coeficiente de raza negra resulta no significativo. 
+
+### Veamos si se rechaza la adecuacion del modelo 
+```{r}
+adecuacionPval <- function(fitglm) {
+	# Ho: El modelo es adecuado
+	return(pchisq(fitglm$deviance/summary(fitglm)$dispersion, fitglm$df.residual, lower.tail=F));
+}
+adecuacionPval(fitglm);
+```
+* Prueba de hipotesis sobre la adecuacion del modelo con deviance escalada:
+  + Ho = El modelo es adecuado
+  + H1 = El modelo mas general es adecuado
+* La deviance escalada es el estadistico de cociente de verosimilitud para testear la hipotesis nula de que el modelo es adecuado contra la alternativa de que un modelo mas general es el adecuado. 
+* 0.2395008 el modelo resulta adecuado.
+
+## 
+```{r}
+eta2=(fitglm$linear.predictors)^2
+
+fit2n<- glm(cbind(sintomas, nosintomas) ~ azt+raza+eta2, family="binomial");
+
+summary(fit2n)
+```
+* Si el coeficiente del eta no es significativo luego modelo bien elegido
+* Viendo WALL veo que no es significativo el coeficiente que acompaña al eta entonces modelo adecuado
+
+* Concluyo que ante la poca cantidad de datos no puedo determinar tendencias en las variables de respuesta para realizar una transformacion qeu ajuste mejor por lo que las variables se incluyen de la forma que fueron registradas. Y ante la pruebas formales de adecuacion del modelo el modelo resulta adecuado. Ademas el modelo que incluye interaccion obteine un mayor AIC por lo que se descarta.
+
+### Modelo que incluye interaccion 
+```{r}
+fitglm1 <- glm(cbind(sintomas, nosintomas) ~ azt+raza+raza*azt, family="binomial");
+summary(fitglm1)
+adecuacionPval(fitglm1)
+```
+* Modelo adecuado.
+
+### Analisis con diferencia de deviances
+```{r}
+anova(fitglm,fitglm1,test="Chisq") # Cuando el phi es conocido
+```
+* Prueba de hipotesis sobre la diferencia de deviance:
+  + Ho = El modelo mas parsimonioso es adecuado. No es necesario añadir mas terminos.
+  + H1 = El modelo mas complejo es adecuado. Es necesario añadir mas terminos.
+* Se puede chequear la utilidad del modelo M2 (largo o complejo), en relacion a M1 (corto o parsimonioso) mediante la diferencia de deviance.
+* Con un p valor de 0.24 concluimos que la muestra no reune evidencias suficientes para rechazar la hipotesis nula por lo que se concluye que el modelo parsimonioso es adecuado.
+
+## b- Interprete los resultados obtenidos, realizando estimaciones de cocientes de chances.
+```{r}
+exp(coef(fitglm))
+```
+* La categoria de referencia es la que no figura.
+* Conclucion general: La chande de exito de la categoria de NO REFERENCIA es X veces la chance de exito de la CATEOGRIA DE REFERENCIA, manteniendo constante la otra variable.
+* La chance de contraer sintomas para los pacientes que se someten al tratamiento con azt mas adelante es 2.054 veces la chance de contraer sintomas  para los pacientes que se someten al tratamiento con azt inmediatamente, manteniendo fija la raza.
+* La chance de contraer sintomas para los pacientes de raza negra es 0.95 veces la chance de contraer sintomas  para los pacientes de raza blanca, manteniendo fijo el momento del tratamiento con azt. Es decir que la raza no es significativa en este modelo.
+
+
+#### Interpretacion al reves
+```{r}
+exp(-coef(fitglm))
+```
+* La chance de contraer sintomas para los pacientes que se someten al tratamiento con azt inmediatamente es 0.5 veces la chance de contraer sintomas  para los pacientes que se someten al tratamiento con azt mas adelante, manteniendo fija la raza.
+* La chance de contraer sintomas para los pacientes de raza blanca es 1.05 veces la chance de contraer sintomas  para los pacientes de raza negra, manteniendo fijo el momento del tratamiento con azt. Es decir que la raza no es significativa en este modelo. 
+
+
+## c- Encuentre un intervalo de 95% de confianza para el cociente de chances de desarrollar síntomas entre aquellos que reciben el tratamiento con AZT inmediatamente y los que lo reciben más adelante.
+```{r}
+exp(confint.default(fitglm))
+```
+* La chance de contraer sintomas para los pacientes que se someten al tratamiento con azt mas adelante es entre [1.18; 3.55] veces la chance de contraer sintomas  para los pacientes que se someten al tratamiento con azt inmediatamente con una confianza del 95%.
+
+# Ejercicio 10
+```{r}
+
+rm(list=ls());
+
+datos <- read.table("trampas.txt", header=!F);
+attach(datos);
+
+# Veamos si se rechaza la adecuacion del modelo
+adecuacionPval <- function(fitglm) {
+	# Ho: El modelo es adecuado
+	return(pchisq(fitglm$deviance/summary(fitglm)$dispersion, fitglm$df.residual, lower.tail=F));
+}
+
+#Cargue yo:
+datos2<- tibble(
+  trampa=c(rep("Anaranjada",2),rep("Amarilla",2)),
+  sexo=c("Macho","Hembra","Macho","Hembra"),
+  atrapados=c(246,17,458,32)
+)
+```
+
+
+## a- Defina un modelo log-lineal para las frecuencias observadas. POISSON
+* Estamos en precencia de datos provenientes de un conteo, lo cual nos refiere a un GLM con una respuesta de la familia poisson, la cual se caracteriza por:
+* g(u) = log(u)  = n = Xb = X * [bo color sexo]
+* .:. u = exp(Xb)
+
+### Modelo de independencia 
+Resulta adecuado luego las variables son independientes.
+```{r}
+fitglm <- glm(conteo ~ color+sexo, family="poisson");
+summary(fitglm)
+adecuacionPval(fitglm)
+
+```
+* El modelo resulta adecuado y los coeficientes son significativos.
+* Si este resulta adecuado luego las variables son independientes y fin.
+
+### Modelo de asociacion 
+```{r}
+fitglm2 <- glm(conteo ~ color*sexo, family="poisson");
+summary(fitglm2)
+adecuacionPval(fitglm2)
+```
+El modelo de asociacion tambien resulta adecuado
+
+### Comparacion modelos encajados: Test de cociente de verosimilitud, diferencia de deviance entre modelos ajustados:
+```{r}
+anova(fitglm,fitglm2,test="Chisq") # Cuando el phi es conocido
+```
+* Prueba de hipotesis sobre la diferencia de deviance:
+  + Ho = El modelo mas parsimonioso es adecuado. No es necesario añadir mas terminos.
+  + H1 = El modelo mas complejo es adecuado. Es necesario añadir mas terminos.
+* Se puede chequear la utilidad del modelo M2 (largo o complejo), en relacion a M1 (corto o parsimonioso) mediante la diferencia de deviance.
+* Con un p valor de 0.9718 concluimos que la muestra no reune evidencias suficientes para rechazar la hipotesis nula por lo que se concluye que el modelo mas parsimonioso es adecuado.
+
+## b- Ajuste el MLG definido y obtenga conclusiones.
+La conclucion en realidad seria que las variables trampa y sexo son independientes.
+```{r}
+# El OR de que sea trampa naranja vs amarilla es
+
+exp((fitglm$coefficients)[2])
+# coloranaranjada 
+#       0.5367347
+# La chance de que un insecto quede retenido en una trampa de color anaranjada es 0.53 veces la chance de que quede retenido en una trampa amarilla manteniendo fijo el sexo.
+
+
+1/exp((fitglm$coefficients)[2]);
+# coloranaranjada 
+#        1.863118
+# La chance de que un insecto quede retenido en una trampa de color amarilla es 1.86 veces la chance de que quede retenido en una trampa anaranjada manteniendo fijo el sexo.
+
+exp((fitglm$coefficients)[3])
+# sexoMacho 
+#       14.37
+# La chance de que un insecto macho quede retenido en una trampa es 14.36 veces la chance de que un insecto hembra quede retenido en una trampa manteniendo fijo el color de la trmapa.
+```
+
+## 
+```{r}
+exp(coef(fitglm))
+```
+## 
+```{r}
+exp(-coef(fitglm))
+```
+* La categoria de referencia es la que no figura.
+* Conclucion general: La chande de exito de la categoria de NO REFERENCIA (que figura) es X veces la chance de exito de la CATEOGRIA DE REFERENCIA (la que no figura), manteniendo constante la otra variable.
+
+* La chance de atrapar un insecto para la trampa anaranjada es 0.54 veces la chance de atrapar un insecto para la trampa amarilla, manteniendo fijo el sexo.
+
+* La chance de de atrapar un insecto macho es 14.36 veces la chance de atrapar un insecto hembra, manteniendo fijo el color de la trampa.
+
+#### Interpretando de la inversa
+* La chance de atrapar un insecto para la trampa  amarilla es 1.86 veces la chance de atrapar un insecto para la trampa anaranjada, manteniendo fijo el sexo.
+
+# Ejercicio 11 
+```{r}
+rm(list=ls());
+
+datos <- read.table("rio.txt", header=!F);
+datos[,1] <- as.factor(datos[,1]);
+datos[,2] <- as.factor(datos[,2]);
+attach(datos);
+
+# Veamos si se rechaza la adecuacion del modelo
+adecuacionPval <- function(fitglm) {
+	# Ho: El modelo es adecuado
+	return(pchisq(fitglm$deviance/summary(fitglm)$dispersion, fitglm$df.residual, lower.tail=F));
+}
+```
+
+
+## a- Ajuste un modelo log-lineal de independencia y evalúe si existe asociación entre temperatura y cantidad de sólidos volátiles.
+```{r}
+fitglm <- glm(conteo ~ temp+sol, family="poisson")
+adecuacionPval(fitglm)
+
+```
+
+* La independecia de las dos variables categoricas es verdadera si y solo si este modelo es adecuado.
+* El modelo resulta adecuado, por lo que se concluye que las variables categoricas son independientes.
+
+```{r}
+summary(fitglm)
+```
+* A partir de la prueba de hipotesis sobre los B para las variables categoricas que toman como referencia la categoria 0, se puede concluir que:
+* Hay diferencias significativas en la media para el conteo en las categorias de cantidad de solidos volatiles 0 y 1 y ademas entre las categorias 0 y 2.
+* No hay diferencias significativas en la media para el conteo entre las temperaturas 0 y 1 y tampoco entre las temperaturas 0 y 2.
+
+## b- Realice pruebas de hipótesis para comparar los niveles dentro de cada una de las variables consideradas.
+```{r}
+# Pruebas de hipotesis, en este ejemplo vemos si temp1=temp2 y sol1=sol2
+fitglm$coefficients
+lht(fitglm,c(0,1,-1,0,0), test="F") #Compara temp 1 y temp 2 
+lht(fitglm,c(0,0,0,1,-1), test="F") #Compara sol 1 y sol 2
+```
+* Ambas dan no significativas.
+
+## Ejercicio 12: 
+```{r}
+rm(list=ls());
+
+datos <- read.table("tabaco.txt", header=!F);
+attach(datos);
+adecuacionPval <- function(fitglm) {
+	# Ho: El modelo es adecuado
+	return(pchisq(fitglm$deviance/summary(fitglm)$dispersion, fitglm$df.residual, lower.tail=F));
+}
+
+```
+
+## a- Calcule la proporción de ratones que desarrollaron tumores en cada uno de los grupos.
+```{r}
+# Proporcion con tumor por cada grupo
+by(datos, datos$grupo, function(x) x[x$tumor=="presente", "conteo"] / sum(x$conteo));
+# Filtra los datos tumor presente y se queda con el valor del conteo y los divide por la suma
+```
+
+* Proporcion de extios grupo tratado = 0.91
+* Porporcion de exitos grupo control = 0.59
+
+## b- Ajuste un modelo log-lineal de independencia. ¿Resulta adecuado?
+
+```{r}
+fitglmloglin <- glm(conteo ~  grupo+tumor, family="poisson");
+adecuacionPval(fitglmloglin);
+```
+
+* Ajustamos un modelo log-lineal de independencia (para ver si es independiente presentar tumor y estar tratado).
+* La independecia de las dos variables categoricas es verdadera sii este modelo es adecuado.
+* p valor bajo, menor a 0.05 por lo tanto el modelo no es adecuado y por lo tanto las variables categoricas no son independientes.
+* Agregamos interaccion.
+* Entonces agregamos la interaccion. Este modelo es saturado y por lo tanto tendre 0 grados de libertad para la deviance.
+
+## c- Agregue la interacción grupo-presencia/ausencia y estime el cociente de chances de desarrollar tumor de pulmón entre individuos tratados y controles.
+# se plantea asi el modelo con interaccion?
+```{r}
+fitglm <- glm(conteo ~  grupo+tumor+grupo*tumor, family="poisson");
+adecuacionPval(fitglm);
+
+fitglm <- glm(conteo ~  grupo*tumor, family="poisson");
+adecuacionPval(fitglm);
+```
+* El modelo con interaccion es adecuado.
+
+## 
+```{r}
+summary(fitglm)
+exp(coef(fitglm))
+```
+* La categoria de referencia es la que no figura.
+* Conclucion general: La chande de exito de la categoria de NO REFERENCIA es X veces la chance de exito de la CATEOGRIA DE REFERENCIA, manteniendo constante la otra variable.
+grupotrat:tumorpresente = 1.97 unico coeficiente que se interpreta:
+exp(b) = 7.18
+La chance de tener un tumor en el grupo tratamiento es 7.18 veces la chance de tener un tumor en el grupo control.
+
+## d- Ajuste los modelos logit equivalentes a los modelos log-lineales ajustados en b) y c).
+### Modelo logit equivalente al log-lineal SIN interaccion
+```{r}
+grupo <- c("trat", "control");
+presente <- subset(datos, tumor=="presente")$conteo;
+ausente  <- subset(datos, tumor=="ausente")$conteo;
+# La variable de exito y fracaso es la que figura indirectamente tumor presente y ausente.
+
+summary(glm(cbind(presente, ausente) ~ 1, family="binomial"));
+```
+
+```{r}
+summary(fitglmloglin);
+```
+
+
+### Modelo logit equivalente al log-lineal CON interaccion
+```{r}
+grupo <- c("trat", "control");
+presente <- subset(datos, tumor=="presente")$conteo;
+ausente  <- subset(datos, tumor=="ausente")$conteo;
+
+logit_equiv<-glm(cbind(presente, ausente) ~ grupo, family="binomial");
+summary(logit_equiv)
+b=logit_equiv$coefficients
+exp(b)
+```
+*  La chance de tener un tumor en el grupo tratamiento es 7.18 veces la misma chance en el grupo control.
+
+
+```{r}
+summary(fitglm)
+```
+
+
+# Ejercicio 13
+Fue realizado un ensayo de una muestra de un proceso de contaminación, en donde un gramo de una sustancia
+era puesta en suspensión en 100 ml. de agua y luego diluída 8, 16, 32, 64 y 128 veces. Cinco repeticiones de cada
+dilución fueron cultivadas dando por resultados 3, 2, 2, 0 y 0 positivas con respecto a la presencia de bacterias.
+Estime la concentración de bacterias/gm en la muestra original.
+```{r}
+datos <- tibble(
+  dilucion = c(8,16,32,64,128),
+  positiva = c(3,2,2,0,0),
+  total = c(5,5,5,5,5)
+)
+attach(datos)
+adecuacionPval <- function(fitglm) {
+	# Ho: El modelo es adecuado
+	return(pchisq(fitglm$deviance/summary(fitglm)$dispersion, fitglm$df.residual, lower.tail=F));
+}
+```
+
+
+### Modelo de probabilidad y equivalente de poisson:
+```{r}
+fitglm <- glm(cbind(positiva, total-positiva) ~ dilucion, family="binomial");
+adecuacionPval(fitglm)
+summary(fitglm)
+```
+* El modelo resulta adecuado.
+
+## Estimacion casos positivos para dilucion 0.
+ No estaria muy bien predecir para el 0 porque no forma parte del rango de valores de los datos con los cuales se ajusto la regresion.
+```{r}
+fitglm$coefficients
+b<-coef(fitglm)
+n<-b[1]+b[2]*0  #predictor lineal cuando dilucion es 0
+
+# η = logit(p)
+p0 = exp(n)/(1+exp(n))
+p0*5
+```
+* La proporcion de casos positivos cuando la dilucion es 0 es de 0,7179
+* p0 = casos positivos /  total 
+* casos positivos = p0 * total = 3,6 = 4.
+
+# Ejercicio 14
+## Base de datos
+```{r}
+datos <- tibble(
+  diametro = c(rep("<2",6),rep("<2",6),rep(">2",6),rep(">2",6),rep("<2",6),rep("<2",6),rep(">2",6),rep(">2",6)),
+  altura = c(rep("<5",6),rep(">5",6),rep("<5",6),rep(">5",6),rep("<5",6),rep(">5",6),rep("<5",6),rep(">5",6)),
+  momdia = c(rep(c("Te","Te","M","M","Ta","Ta"),8)),
+  solsom = c(rep(rep("Sol",6),4),rep(rep("Sombra",6),4)),
+  especie = c(rep(c("G","O"),24)),
+  numero = c(20,2,8,1,4,4,13,0,8,0,12,0,8,3,4,1,5,3,6,0,0,0,1,1,34,11,69,20,18,10,31,5,55,4,13,3,17,15,60,32,8,8,12,1,21,5,4,4),
+  total = c(rep(39,6), rep(33,6),rep(24,6),rep(8,6),rep(162,6),rep(111,6),rep(140,6),rep(47,6))
+)
+attach(datos)
+```
+
+
+## a- Ajuste un MLG con distribución binomial y enlace logístico con sólo los efectos principales.
+
+```{r}
+fitglm <- glm(cbind(numero, total-numero) ~ diametro + altura + solsom + especie + momdia, family="binomial")
+summary(fitglm)
+```
+
+
+## b- Evalúe si es significativa alguna de las interacciones de orden 2.
+
+```{r}
+fitglm1 <- glm(cbind(numero, total-numero) ~ diametro + altura + solsom + especie + momdia + especie*momdia, family="binomial")
+summary(fitglm1)
+
+fitglm2 <- glm(cbind(numero, total-numero) ~ especie + momdia + especie*momdia, family="binomial")
+summary(fitglm2)
+
+fitglm3 <- glm(cbind(numero, total-numero) ~ especie + momdia + solsom + especie*momdia + especie*solsom, family="binomial")
+summary(fitglm3)
+
+anova(fitglm1, test="Chisq") # Binomial y poisson
+
+anova(fitglm,fitglm1,test="Chisq")
+
+anova(fitglm1,fitglm2,test="Chisq")
+
+anova(fitglm3,fitglm2,test="Chisq")
+```
+
+* Primer anova: El cambio en la deviance es significativo para agregar la interaccion por lo que nos quedamos con el modelo mas complejo.
+
+* Segundo anova: El cambio en la deviance no es significativo por lo que nos queadmos con el modelo mas parsimonionso.
+
+* Tercer anova:  El tercer anova es significativo por lo que me quedo con el modelo mas complejo.
+
+## c- Interprete los resultados obtenidos.
+```{r}
+fitglm3 <- glm(cbind(numero, total-numero) ~ especie + momdia + solsom + especie*momdia + especie*solsom, family="binomial")
+summary(fitglm3)
+
+exp(fitglm3$coefficients)
+```
+
+* Interaccion:
+  +   especieO:momdiaTa: Es la diferencia entre las chances de observar una lagartija de la especie O respecto de la G en Ta y la chance de observar una lagartija de la especie 0 respecto de G en M. chance(logodds(o/g en Ta) - logodds(o/g en M)) = 2.51, por lo que es mas probabile observar O en Ta que O en M.
+  +   especieO:momdiaTe: Es la diferencia entre las chances de observar una lagartija de la especie O respecto de la G en Te y la chance de observar una lagartija de la especie 0 respecto de G en M. chance(logodds(o/g en Te) - logodds(o/g en M)) = 1.11, es casi similar la probabilidad de observar O en Te que en M.
+  +   especieO:solsomSombra: Es la diferencia entre las chances de observar una lagartija de la especie O respecto de la G en sombra y la chance de observar una lagartija de la especie 0 respecto de G en sol. chance(logodds(o/g en sombra) - logodds(o/g en sol)) = 2,28, es mas probable observar O en sombra que en sol.
+
+* La chance de observar lagartijas de la especie 0 en Ta es 2.51 veces la chance de observar lagartijas de la especie G en M, manteniendo constante las demas variables.
+
+* La chance de observar lagartijas de la especie 0 en Te es 1.11 veces la chance de observar lagartijas de la especie G en M, manteniendo constante las demas variables.
+
+```{r}
+exp(-fitglm3$coefficients)
+```
+* momdia ref =  M
+* especie ref = G
+* Al hacer -exp() cambio la categoria de referencia.
+
+* La chance de observar lagartijas de la especie G es 10.57 veces la chance de que sea de la especie 0, manteniendo constantes las demas variables.
+
+* La chance de que observar lagartijas en M es 5.10 la chance de observar lagartijas en Ta y 2 la chance de observar lagartijas en Te, cuando se mantienen constantes las demas variables.
+
+* La chance de observar lagartijas en la sombrea es 1.23 veces la chance de observar lagartijas en el sol, manteniendo constantes las demas variables.
+
+* Interaccion dado vuelta:
+  +   especieO:momdiaTa: Es la diferencia entre las chances de observar una lagartija de la especie G respecto de la O en Ta y la chance de observar una lagartija de la especie G respecto de O en M. chance(logodds(G/O en Ta) - logodds(G/O en M)) = 0.39, por lo que es mas probabile observar G en M que G en Ta.
+  
+# Ejercicio 15
+Reproduzca el ejemplo 8.4.1 de McCullagh & Nelder (1989), pág. 296-300.
+```{r}
+setwd("C:/Users/marti/Desktop/Modelos Lineales Generalizados/Practico/datos")
+datos <- read.table("seguros.txt", header=!F);
+datos$pa <- as.factor(datos$pa);
+datos$va <- as.factor(datos$va);
+attach(datos);
+
+# datos$num es mijk
+
+adecuacionPval <- function(fitglm) {
+	# Ho: El modelo es adecuado
+	return(pchisq(fitglm$deviance/summary(fitglm)$dispersion, fitglm$df.residual, lower.tail=F));
+}
+```
+
+
+# Ejercicio 16
+* La siguiente tabla presenta datos sobre anidad a diferentes partidos políticos, donde las personas fueron clasificadas según sexo y raza.
+
+## Encuentre un modelo logit multinomial que ajuste adecuadamente a los datos. Interprete en términos de cocientes de chances.
+* Quiero predecir la direccion del partido politico en funcion de las otras variables.
+```{r}
+datos <- tibble(
+  sexo = c(rep("Masculino",6),rep("Femenino",6)),
+  raza = c(rep("Blanca",3),rep("Negra",3),rep("Blanca",3),rep("Negra",3)),
+  partpol = rep(c("Democrata","Republicano","Independiente"),4),
+  cantidad = c(132,176,127,42,6,12,172,129,130,56,4,15)
+  )
+
+# En realidad los datos debo cargarlos asi:
+dem <- c(132,42,172,56)
+rep <- c(176,6,129,4)
+ind <- c(127,12,120,15)
+sexo <- c("Masculino","Masculino","Femenino","Femenino")
+raza <- c("Blanca","Negra","Blanca","Negra")
+
+adecuacionPval <- function(fitglm) {
+	# Ho: El modelo es adecuado
+	return(pchisq(fitglm$deviance/summary(fitglm)$dispersion, fitglm$df.residual, lower.tail=F));
+}
+```
+
+#### Modelo
+```{r}
+library(VGAM)
+fit <- vglm(cbind(dem,rep,ind)~sexo+raza, family=cumulative(parallel = TRUE))
+summary(fit)
+
+pchisq(37.3969, 4,lower.tail=F)
+```
+* P valor es bajo, por lo que la muestra reune evidencias suficientes para rechazar la hipotesis nula de que el modelo es adecuado a un nivel de significancia del 5%, por lo que el modelo no seria adecuados.
+
+#### Ajusto modelo de independencia
+```{r}
+fit2 <- vglm(cbind(dem,rep,ind)~1, family=cumulative(parallel = TRUE))
+summary(fit2)
+
+pchisq((90.933 - 37.3969), (6 - 4),lower.tail=F)
+```
+* El cambio en la deviance es significativo al agregar los terminos por lo que se concluye que el modelo con mayor cantidad de parametros es con el que nos debemos quedar.
+
+#### Interpretacion  
+```{r}
+fitted.values(fit)
+
+exp(coef(fit))
+
+exp(-coef(fit))
+```
+* La chance de tener ideologia en la direccion democrata en vez de la liberal en la raza negra es 3.82 veces esa chance en la raza blanca.
+
+* La chance de tener ideologia en la direccion democrata en vez de la liberal en el sexo femenino es 1.29 veces esa chance en el sexo femenino.
+
+# Ejercicio 17
+Se entrevistaron a 300 sujetos que conducían automóviles (pequeños, medianos y grandes) sobre sus preferencias
+por los automóviles. Se les pidió que calificaran la importancia de varias características para ellos cuando estaban
+por comprar un coche.
+La siguiente tabla muestra las calificaciones para la característica "dirección asistida", según el sexo y la variable
+edad del sujeto categorizada.
+
+## Encuentre un modelo logit multinomial que ajuste adecuadamente a los datos. Interprete en términos de cocientes de chances.
+```{r}
+ningimp <- c(26,9,5,40,17,8)
+imp <- c(12,21,14,17,15,15)
+muyimp <- c(7,15,41,8,12,18)
+edad <- c("18-23","24-40","+40","18-23","24-40","+40")
+sexo <- c("fem","fem","fem","masc","masc","masc")
+
+
+library(VGAM)
+fit <- vglm(cbind(ningimp,imp,muyimp)~edad+sexo, family=cumulative(parallel = TRUE))
+summary(fit)
+
+pchisq(4.5321, 7,lower.tail=F)
+```
+* El p valor es alto, la muestra no reune evidencias suficientes para rechazar la hipotesis nula a un nivel de significancia del 5%, se concluye que el modelo es adecuado. 
+
+#### Modelo de independencia
+```{r}
+library(VGAM)
+fit2 <- vglm(cbind(ningimp,imp,muyimp)~1, family=cumulative(parallel = TRUE))
+summary(fit2)
+
+pchisq((81.7806-4.5321), (10-7),lower.tail=F)
+```
+* El cambio en la deviance por la adicion de terminos es significativo, con lo cual se concluye que debemos quedarnos con el modelo que tiene mayor cantidad de terminos.
+
+#### Interpretacion
+```{r}
+exp(coef(fit))
+
+```
+* La chance de que la importancia en el automovil sea baja en vez de que sea alta, en el sexo masculino es 1.73 veces esa chance en el sexo femenino. Con lo que se concluye que los hombres tienden a conciderar menos importante el automovil que las mujeres.
+
+* La chance de que la importancia en el automovil sea baja en vez de que sea alta, en jovenes es 9.32 veces esa chance en adultos. Joves concideran menos importante el automovil.
+
+* La chance de que la importancia en el automovil sea baja en vez de que sea alta, en edad media es 2.96 veces esa chance en adultos. Edad media concideran menos importante el automovil.
+
+# Ejercicio 18
+El archivo arbol.txt presenta datos de inventarios forestales de la Empresa Champion de Papel y Celulose
+Ltda., Mogí Guaçú, San Pablo, Brasil. Contiene el número de árboles muertos en tres regiones del Estado de
+San Pablo, y la edad de los árboles en años. Estudie si existen diferencias entre los sitios, teniendo en cuenta la
+edad.
+
+#### Ajustamos modelo de independencia y modelo teniendo en cuenta los factores:
+Estamos en presencia de una variable poisson, podria ser binomial pero no tenemos referidos los exitos respecto un total.
+```{r}
+datos <- read.table("arbol.txt", header=!F);
+str(datos)
+datos$sitio<-as.factor(datos$sitio)
+adecuacionPval <- function(fitglm) {
+	# Ho: El modelo es adecuado
+	return(pchisq(fitglm$deviance/summary(fitglm)$dispersion, fitglm$df.residual, lower.tail=F));
+}
+
+# Modelo de independencia sumados
+fitglm <- glm(datos$muertes ~ datos$sitio+datos$edad, family="poisson"); # El enlace canonico es el log(m)
+summary(fitglm)
+adecuacionPval(fitglm);
+
+# Modelo de asociacion
+fit2 <- glm(datos$muertes ~ datos$sitio*datos$edad, family="poisson")
+summary(fit2)
+adecuacionPval(fit2)
+```
+* El p valor es muy bajo tanto para el modelo de independencia como para el modelo de asociacion, por lo que la muestra reune evidencias suficientes para rechazar la hipotesis nula, por lo que el modelo no es adecuado.
+
+#### Cambio en la deviance:
+```{r}
+anova(fitglm,fit2,test="Chisq")
+```
+* El cambio en la deviance es significativo, por lo que nos quedamos con el modelo que tiene mas parametros, el modelo de asociacion.
+
+#### Quasipoisson
+
+* Al ser la deviance tan grande podria parecer que se trata de un problema de superdispersion por lo que modelaremos con la quasipoisson para interpretar el ajuste. Esto permite que el phi estimado no sea 1 como en el caso de la poisson y que mejoren los resultados.
+
+```{r}
+fit3 <- glm(datos$muertes ~ datos$sitio*datos$edad, family="quasipoisson")
+summary(fit3)
+adecuacionPval(fit3)
+summary(fit3)$dispersion
+```
+* El p valor es grande, por lo que la muestra no reune evidencias suficientes para rechazar la hipotesis nula, por lo que 
+se concidera que el modelo es adecuado a un nivel de significancia del 5%.
+
+Con la estimacion del phi el modelo resulta adecuado
+
+### Analisis de residuos antes y depsues:
+#### Antes cuasiverosimilitud
+```{r}
+plot(sqrt(fit2$fitted.values),glm.diag(fit2)$rd)+abline(2,0)+abline(-2,0)
+
+plot(datos$muertes,glm.diag(fit2)$rd)
+```
+* Los residuos son muy altos previos al ajuste del modelo cuasiverosimilitud.
+* Valores muy altos de residuos.
+
+#### Despues cuasiverosimilitud
+```{r}
+s<-sqrt(summary(fit3)$dispersion) # phi para corregir los errores
+plot(sqrt(fit3$fitted.values),glm.diag(fit3)$rd/s)+abline(2,0)+abline(-2,0)
+plot(datos$muertes,glm.diag(fit3)$rd/s)
+```
+* Los residuos mejoran muchisimo, solo 2 de ellos se encuentran fuera de los limites.
+* El valor de los residuos diminuye notablemente.
+
+#### Interpretacion
+ Recordar que estamos en regresion poisson y e(b) muestra factor multiplicativo por el que aumenta cuando cuando aumenta en una unidad x.
+ 
+```{r}
+exp(coef(fit3))
+mean(datos$edad) #4.92
+```
+* La media de arboles muertos aumenta en un factor de 1.27 cuando aumenta en una unidad la edad. Es decir al aumentar la edad en una unidad la media de arboles muertos aumenta un 27%, manteniendo constantes las demas variables.
+
+* La cantidad media de arboles muertos aumenta en un factor de 0.89 en el sitio 2 respecto a el sitio 1 manteniendo constante las demas variables. Es decir la media disminuye un 11% en el sitio 2 respecto al sitio 1, manteniendo constantes las demas variables.   
+
+* La cantidad media de arboles muertos aumenta en un factor de 1.006 en el sitio 3 respecto al sitio 1 manteniendo constante las demas variables. Es decir la media aumenta un 0.6% en el sitio 3 respecto al sitio 1.
+
+* La cantidad media de arboles muertos aumenta en un factor de (-11% + 27% - 8%) = 8% en el sitio 2 respecto al sitio 1 cuando la edad aumenta en una unidad.
+
+* La cantidad media de arboles muertos aumenta en un factor de (0.6% + 27% + 11%) = 38.6% en el sitio 3 respecto al sitio 1 cuando la edad aumenta en una unidad.
+
+# Ejercicio 19
+Orobanche es un género de plantas parasitarias sin clorofila que crecen en las raíces de plantas con flores. En un
+estudio para investigar los factores que afectan la germinación de las semillas de la especie Orobanche aegyptiaca,
+una cierta cantidad de semillas (n) fue colocada en un recipiente con un extracto preparado a partir de raíces
+de habas o pepinos. Se registró el número de semillas que germinaron (y) para dos variedades de Orobanche
+aegyptiaca: O. aegyptiaca 75 y O. aegyptiaca 73.
+
+```{r}
+datos <- tibble(
+  especie = factor(c(rep("OA75",11),rep("OA73",10))),
+  extracto = factor(c(rep("Haba",5),rep("Pepino",6),rep("Haba",5),rep("Pepino",5))),
+  y = c(10,23,23,26,17,5,53,55,32,46,10,8,10,8,23,0,3,22,15,32,3),
+  n = c(39,62,81,51,39,6,74,72,51,79,13,16,30,28,45,4,12,41,30,51,7),
+  prop = y/n,
+  a=n-y
+  
+)
+attach(datos)
+adecuacionPval <- function(fitglm) {
+	# Ho: El modelo es adecuado
+	return(pchisq(fitglm$deviance/summary(fitglm)$dispersion, fitglm$df.residual, lower.tail=F));
+}
+```
+
+## a- Explore grácamente la proporción de semillas que germinaron.
+
+```{r}
+ggp <- ggplot(data = datos);
+ggp <- ggp + geom_point(aes(x=especie, y=prop, color=extracto)); ggp #Binomial con 2 covariables
+
+```
+* Las proporciones parecen mayores para la especie oa75 que para la especei oa73.
+* La proporcion de plantas germinadas es mayor en pepinos que en habas para ambas especies.
+
+## b- Ajuste el modelo lineal generalizado que considere adecuado para este conjunto de datos, verificando su adecuación.
+
+```{r}
+### Enlace logit:
+fit1<-glm(cbind(y,a)~especie+extracto,family="binomial") 
+summary(fit1)
+adecuacionPval(fit1)
+
+```
+* El p valor es bajo por lo que la muestra reune evidencias suficientes para rechazar la hipotesis nula para un nivel de significancia del 5% por lo que el modelo no es adecuado.
+
+#### Modelo de independencia
+```{r}
+
+fit11<-glm(cbind(y,a)~1,family="binomial") 
+summary(fit11)
+adecuacionPval(fit11)
+```
+* El p valor es bajo por lo que la muestra reune evidencias suficientes para rechazar la hipotesis nula para un nivel de significancia del 5% por lo que el modelo no es adecuado.
+
+#### Analisis de la diferencia de deviance entre modelos ajustados
+```{r}
+anova(fit1,fit11,test="Chisq")
+```
+* Prueba de hipotesis sobre la diferencia de deviance:
+  + Ho = El modelo mas corto es adecuado
+  + H1 = El modelo mas largo es adecuado
+* Se puede chequear la utilidad del modelo M2 (largo), en relacion a M1 (corto) mediante la diferencia de deviance.
+* Con un p valor de 1.515xe-13 concluimos que la muestra reune evidencias suficientes para rechazar la hipotesis nula por lo que se concluye que el modelo con mas coeficientes es adecuado.
+
+### Quasibinomial
+* Los coeficientes son significativos, pero el modelo no ajusta bien. El problema podria ser conciderar el phi igual a 1 por lo que probamos con un modelo quasybinomial
+```{r}
+fit2<-glm(cbind(y,a)~especie+extracto,family="quasibinomial") 
+summary(fit2)
+adecuacionPval(fit2)
+```
+* Se obtiene un mayor p valor por lo que para este modelo la muestra no reune evidencias suficientes para rechazar la hipotesis nula, por lo que el modelo se concidera adecuado.
+
+### Analisis de residuos antes y depsues:
+#### Antes cuasiverosimilitud
+```{r}
+plot(asin(sqrt(fit1$fitted.values)),glm.diag(fit2)$rd)+abline(2,0)+abline(-2,0)
+```
+* Los residuos son muy altos previos al ajuste del modelo cuasiverosimilitud.
+* Valores muy altos de residuos.
+
+#### Despues cuasiverosimilitud
+```{r}
+s<-sqrt(summary(fit2)$dispersion) # phi para corregir los errores
+plot(asin(sqrt(fit2$fitted.values)),glm.diag(fit2)$rd/s)+abline(2,0)+abline(-2,0)
+```
+* Los residuos mejoran muchisimo.
+* El valor de los residuos diminuye notablemente.
+
+## c- Obtenga conclusiones.
+```{r}
+exp(coef(fit2))
+```
+* La chance de que germine para la especie oa75 es 1.31 veces mayor que para la especie oa73. Es decir que la chance es un 31% veces mas grande en la especie oa75 que en la oa73, manteniendo constante el extracto.
+
+* La chance de que germine en pepino es 2.9 veces mas grande que la chance de que lo haga en haba, manteniendo constante la especie.
+
+# Ejercicio 20
+Se realizó un estudio para investigar los factores que inuyen en la elección de alimentos primarios de caimanes
+en cuatro lagos de Florida. Se determinó el tipo de comida principal, según el mayor volumen encontrado en el
+estómago del caimán, considerando cinco categorías: Inv = invertebrado, R = reptil, A = ave, P = pescado y
+O = otro. Se registró el lago de procedencia (L1, L2, L3 o L4) y la longitud del caimán (categorizada en I si la
+longitud era menor o igual que 2,3 metros y II si era mayor). Los resultados fueron:
+```{r}
+datos <- tibble(
+  lago=c(rep(c("L1","L1","L2","L2","L3","L3","L4","L4"),5)),
+  longitud=c(rep(c("1","2","1","2","1","2","1","2"),5)),
+  especie = c(rep("inv",8),rep("R",8),rep("A",8),rep("O",8),rep("P",8)),
+  conteo = c(4,0,11,8,11,7,19,1 ,2,1,1,6,2,6,1,0 ,2,3,0,1,1,3,2,1 ,8,5,3,0,5,5,3,3, 23,7,5,13,5,8,16,17)
+)
+adecuacionPval <- function(fitglm) {
+	# Ho: El modelo es adecuado
+	return(pchisq(fitglm$deviance/summary(fitglm)$dispersion, fitglm$df.residual, lower.tail=F));
+}
+```
+
+
+## a- Ajuste y describa un MLG para esta situación, justificando su adecuación.
+#### Ajustamos modelo de independencia y modelo de asociacion:
+```{r}
+#independencia
+fitglm <- glm(datos$conteo ~ datos$especie+datos$longitud+datos$lago, family="poisson"); # El enlace canonico es el log(m)
+summary(fitglm)
+adecuacionPval(fitglm);
+
+fit <- glm(datos$conteo ~ datos$especie*datos$longitud + datos$lago*datos$longitud , family="poisson")
+summary(fit)
+adecuacionPval(fit)
+```
+* El p valor es bajo tanto para el modelo de independencia como para los modelo de asociacion, por lo que la muestra reune evidencias suficientes para rechazar la hipotesis nula, por lo que el modelo no es adecuado.
+
+* Los coeficientes son significativos a pesar de que el modelo es no es adecuado. Podria tratarse de un problema de superdispersion.
+
+#### Ajusto quasipoisson
+```{r}
+#independencia
+fitglm <- glm(datos$conteo ~ datos$especie+datos$longitud+datos$lago, family="quasipoisson"); # El enlace canonico es el log(m)
+summary(fitglm)
+adecuacionPval(fitglm);
+# La variable que tiene 2 categorias es longitud, enotnces es interaccion de todas con longitud.
+
+#especie longitud y lago longitud
+fit <- glm(datos$conteo ~ datos$especie*datos$longitud + datos$lago*datos$longitud , family="quasipoisson")
+summary(fit)
+adecuacionPval(fit)
+```
+* Como el modelo de independencia es adecuado se asume que las variables son independientes.
+* El de independencai ajusta bien a los datos voy a ver cual es mejor.
+
+```{r}
+anova(fit,fitglm,test="Chisq") # Cuando el phi es conocido
+```
+* Prueba de hipotesis sobre la diferencia de deviance:
+  + Ho = El modelo mas parsimonioso es adecuado. No es necesario añadir mas terminos.
+  + H1 = El modelo mas complejo es adecuado. Es necesario añadir mas terminos.
+* Se puede chequear la utilidad del modelo M2 (largo o complejo), en relacion a M1 (corto o parsimonioso) mediante la diferencia de deviance.
+* Con un p valor de 0.07 concluimos que la muestra reune evidencias suficientes para rechazar la hipotesis nula por lo que se concluye que el modelo mas largo o complejo es adecuado, para poder interpetar.
+
+## b- Realice interpretaciones de las estimaciones obtenidas.
+
+```{r}
+b=fit$coefficients;b
+exp(b)
+```
+* Recordar solo interpretar interacciones.
+
+La chance de encontrar un caiman de longitud2 en el lago 2 es 3.41 veces esa chance en el lago 1, manteniendo constantes las demas variables.
+
+La chance de encontrar un caiman de longitud 2 en el lago 3 es 2.94 veces esa chance en el lago 1, manteinendo constntes las demas variables.
+
+La chance de encontrar un caiman de longitud 2 en el lago 4 es 1.3 veces esa chance en el lago 1, manteinendo constntes las demas variables.
+
+
+La chance de encontrar un caiman de longitud 2 con R en el estomago es 1.3 veces esa chance con A en el estomago, manteinendo constntes las demas variables.
+
+```{r}
+b=fit$coefficients;b
+# A era de referencia , ahora no cambia eso.
+exp(-b)
+```
+La chance de encontrar un caiman de longitud 2 con A en el estomago es 4.5 veces esa chance con inv en el estomago, 
+manteinendo constntes las demas variables.
+
+La chance de encontrar un caiman de longitud 2 con A en el estomago es 2.33 veces esa chance con O en el estomago, manteinendo constntes las demas variables.
+
+La chance de encontrar un caiman de longitud 2 con A en el estomago es 1.74 veces esa chance con P en el estomago, manteinendo constntes las demas variables.
+
+
+#### Si quiero interpretar otras variables entonces me quedo con otro moldeo. 

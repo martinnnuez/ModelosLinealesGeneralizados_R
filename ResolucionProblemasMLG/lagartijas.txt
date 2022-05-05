@@ -1,0 +1,26 @@
+luz	diam	altura	hora	g	o
+sol	0	0	te	20	2
+sol	0	0	me	8	1
+sol	0	0	ta	4	4
+sol	0	1	te	13	0
+sol	0	1	me	8	0
+sol	0	1	ta	12	0
+sol	1	0	te	8	3
+sol	1	0	me	4	1
+sol	1	0	ta	5	3
+sol	1	1	te	6	0
+sol	1	1	me	0	0
+sol	1	1	ta	1	1
+sombra	0	0	te	34	11
+sombra	0	0	me	69	20
+sombra	0	0	ta	18	10
+sombra	0	1	te	31	5
+sombra	0	1	me	55	4
+sombra	0	1	ta	13	3
+sombra	1	0	te	17	15
+sombra	1	0	me	60	32
+sombra	1	0	ta	8	8
+sombra	1	1	te	12	1
+sombra	1	1	me	21	5
+sombra	1	1	ta	4	4
+

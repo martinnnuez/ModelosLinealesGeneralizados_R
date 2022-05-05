@@ -1,0 +1,7 @@
+dilucion positiva total
+8 3 5
+16 2 5
+32 2 5
+64 0 5
+128 0 5
+

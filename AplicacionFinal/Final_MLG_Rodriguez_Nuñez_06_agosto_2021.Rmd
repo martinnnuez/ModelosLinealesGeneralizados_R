@@ -1,0 +1,232 @@
+---
+title: "Final Modelos Lineales Generalizados"
+author: "Rodriguez Nuñez Martin"
+date: "6/8/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(boot);
+library(car);
+library(GGally);
+library(ggplot2);
+library(MASS);
+library(dplyr);
+library(VGAM)
+```
+
+# Ejercicio 2
+
+En un estudio realizado a 2074 infantes se identifico si habian sufrido o no enfermedades respiratorias
+(bronquitis o neumonia) durante el primer año de vida, el tipo de alimentacion recibida y el sexo. Los
+datos fueron los siguientes:
+
+### Cargo los datos:
+```{r}
+datos <- tibble(
+  si = c(77,19,47,48,16,31),
+  no = c(381,128,447,336,111,433),
+  sexo = c("niño","niño","niño","niña","niña","niña"),
+  alimentacion = c("mamadera","mamaderaypecho","pecho","mamadera","mamaderaypecho","pecho")
+)
+attach(datos)
+```
+
+## a) Ajuste un modelo logit adecuado para explicar la ocurrencia de enfermedad respiratoria, describiendo formalmente el modelo y justificando su eleccion.
+
+### Descripcion formal del modelo:
+
+1. Componente aleatoria: 
+
+  + La variable aleatoria Y representa:
+  + Y= Cantidad de niños que han sufrido enfermedades respiratorias (bronquitis o neumonia) durante el primer año de vida en 2074 ensayos independientes.
+  + Es una muestra aleatoria con distribucion binomial, B(n,p), de parametros n y p, donde n es el numero total de ensayos independientes y p la probabilidad del exito.
+  + Es decir que las componentes de Y son independientes e identicamente distribuidas con distribucion B(n,p).
+Ademas sabemos que esta distribucion pertenece a la familia exponencial en la forma canonica.
+
+2. Componente sistematico:
+
+  + Las covariables medidas (sexo y alimentacion) forman un predictor lineal:
+  + n = t(x)%*%b , donde: 
+    * n = predictor lineal.
+    * x = matriz de diseño.
+    * b = vector de parametros estimados.
+
+3. Funcion de enlace:
+
+  + Es la funcion que relaciona la componente aleatoria con la componente sistematica. 
+  + En este caso se toma como funcion de enlace a la funcion logit(p), que ademas es la funcion de enlace canonica.
+  + logit(p) = log(p/1-p) = n = t(x)%*%b
+
+### Justificacion eleccion:
+
+  * Para elegir la distribucion adecuada para la variable respuesta hace falta analizar los datos y su naturaleza, en este caso tenemos como respuesta una variable del tipo categorica con 2 categorias que representan exitos y fracasos de n ensayos independientes, por lo que se asume que la distribucion binomial propuesta para la variable respuesta es adecuada.
+  
+  * Por otra parte la para eleccion de la funcion de enlace hace falta analizar el rango posible de valores de la variable respuesta, al ser esta una probabilidad debe pertenecer al rango [0,1], por lo que el enlace logit propuesto parece atractivo. Por otra parte tambien se opta por este enlace como consecuencia de la facilidad de interpretacion de sus resultados como cociente de chances a traves de una transformacion de los coeficientes, algo que para las otras funciones de enlace aptas para esta distribucion no seria tan simple. 
+
+### Ajuste modelo logit:
+
+```{r}
+### Enlace logit:
+fit<-glm(cbind(si,no)~sexo+alimentacion,family=binomial)
+summary(fit)
+```
+
+### Adecuacion del modelo:
+```{r}
+pchisq(fit$deviance/summary(fit)$dispersion, fit$df.residual, lower.tail=F)
+```
+* Prueba de hipotesis sobre la adecuacion del modelo con deviance escalada:
+  + Ho = El modelo es adecuado. 
+  + H1 = Un modelo mas general es adecuado. 
+  
+* La deviance escalada es el estadistico de cociente de verosimilitud para testear la hipotesis nula de que el modelo es adecuado contra la alternativa de que un modelo mas general es el adecuado.
+
+* La muestra no reune evidencias suficientes para rechazar la hipotesis nula a un nivel de significancia del 5% por lo que se concluye que el modelo en estudio es adecuado con un p valor de 0.697.
+ 
+
+## b) Interprete los resultados obtenidos, realizando estimaciones de cocientes de chances.
+```{r}
+exp(coef(fit))
+```
+* La chance de que un infante niño sufra enfermedades respiratorias en el primer año de vida es 1.36 veces la chance chance de que una infante niña sufra enfermedades respiratorias en el primer año de vida, manteniendo fija la alimentacion.
+
+```{r}
+exp(-coef(fit))
+```
+* La chance de que un infante alimentado a base de mamadera sufra enfermedades respiratorias en el primer año de vida es 1.18 veces la chance de que un infante alimentado a base de mamadera y pecho sufra enfermedades respiratorias en el primer año de vida, manteniendo fijo el sexo.
+
+* La chance de que un infante alimentado a base de mamadera sufra enfermedades respiratorias en el primer año de vida es 1.95 veces la chance de que un infante alimentado a base de solo pecho sufra enfermedades respiratorias en el primer año de vida, manteniendo fijo el sexo.
+
+## c) Estime la probabilidad de sufrir enfermedad respiratoria en niñas con alimentacion de mamadera y pecho.
+
+```{r}
+b=fit$coefficients;b
+x=c(1,0,1,0)
+n=t(x)%*%b;n
+
+# enlace logit
+# log(p/1-p)= 
+# Luego p = e^n / (1+e^n) = 
+p = exp(n) / (1+exp(n));p
+```
+
+* La probabilidad de que una infante niña, alimentada a base de mamadera y pecho sufra una enfermedad respiratoria en el primer año de vida es 0.11.
+
+
+
+# Ejercicio 3:
+
+### Cargo los datos:
+```{r}
+rta1<-c(158,167,307,26,38,94,94,67,184,32,39,77)
+rta2<-c(9,19,102,5,12,48,7,8,65,3,11,48)
+rta3<-c(5,5,83,5,4,46,5,4,33,6,4,39)
+rta4<-c(0,3,68,1,4,60,1,3,36,1,2,51)
+
+aire<-gl(2,6) 
+# 1= baja; 2=alta
+trab<-gl(2,3,12)
+# 1 = no, 2 = si
+fumar<-gl(3,1,12)
+# 1 = no , 2 = ex y 3 = actual
+
+sum(rta1)+sum(rta2)+sum(rta3)+sum(rta4)
+```
+
+## a) Describa el procedimiento que se llevo a cabo para el analisis, identificando el MLG ajustado.
+
+### Descripcion formal del modelo:
+
+1. Componente aleatoria: 
+
+  + La variable aleatoria Y representa:
+  + Y= Cantidad de sujetos en cada una de las 4 posibles categorias de eestatus de enfermedad en 2089 ensayos independientes.
+  + Es una muestra aleatoria con distribucion multinomial ordinal M(m,p) de parametros m y p, donde m es el numero total de     ensayos independientes y p la probabilidad del exito.
+  + Es decir que las componentes de Y son independientes e identicamente distribuidas con distribucion M(m,p).
+  + Ademas sabemos que esta distribucion pertenece a la familia exponencial en la forma canonica.
+  + Cada uno de los 2089 ensayos independientes puede tener como resultadao cualquiera de las 4 categorias de eestatus de        enfermedad.
+  
+* Cabe destacar que se trata de una variable aleatoria con distribucion multinomial ordinal como consecuencia de que las     categorias de etatus de enfermedad tiene un orden que se corresponde con la severidad del eestatus de enfermedad.
+  
+2. Componente sistematico:
+
+  + Las covariables medidas (contaminacion en el aire, contaminacion en el trabajo y habito de fumar) forman un predictor    lineal. 
+  + n = t(x)%*%b , donde: 
+    * n = predictor lineal.
+    * x  = matriz de diseño.
+    * b = matriz de coeficientes estimados.
+
+3. Funcion de enlace:
+
+  + Es la funcion que relaciona la componente aleatoria con la componente sistematica. 
+  + En este caso se toma como funcion de enlace a la funcion logit(p), que ademas es la funcion de enlace canonica.
+  + logit(p) = log(p/1-p) = n = t(x)%*%b
+
+### Ajuste del modelo
+ *  Se ajusta un modelo para la variable aleatoria con distribucion multinomial ordinal.
+```{r}
+fit<-vglm(cbind(rta1,rta2,rta3,rta4)~aire+trab+fumar,family=cumulative(parallel=TRUE))
+```
+
+### Print de summary
+```{r}
+summary(fit)
+```
+  En esta salida podemos observar: 
+  
+##### Prueba de hipotesis sobre los beta:
++ La prueba empleada por el R en este caso es la raiz de Wald.
++ En donde cuando el phi es conocido se compara el valor del estadistico un una Z normal estandard.
+
+* Prueba de hipotesis sobre los coeficientes Pr(>|z|):
+  + Ho = B = 0
+  + H1 = B != 0 
+
+##### Interpretacion:
+* Para todos los coeficientes la muestra reune evidencias suficientes para rechazar la hipotesis nula a un nivel de significancia del 5%, por lo que estos se asumen distintos de cero. Exepto el coeficiente para la contaminacion del aire baja, el cual registra un p valor de 0.6750, con lo que la muestra no reune evidencias suficientes para rechazar la hipotesis nula de que el coeficiente sea igual a cero a un nivel de significancia del 5%, por lo que se asume que es igual a cero.
+
+
+### Bondad de ajuste del modelo: 
+```{r}
+1-pchisq(29.99692,29)
+```
+
+##### Prueba de hipotesis sobre el ajuste del modelo:
+* Prueba de hipotesis sobre la adecuacion del modelo con deviance escalada:
+  + Ho = El modelo es adecuado. 
+  + H1 = Un modelo mas general es adecuado. 
+
+##### Interpretacion:
+* La muestra no reune evidencias suficientes para rechazar la hipotesis nula a un nivel de significancia del 5% por lo que se concluye que el modelo en estudio es adecuado con un p valor de 0.4141574.
+
+
+## b) Interprete los resultados obtenidos.
+aire<-gl(2,6) 
+# 1= baja; 2=alta
+trab<-gl(2,3,12)
+# 1 = no, 2 = si
+fumar<-gl(3,1,12)
+# 1 = no , 2 = ex y 3 = actual
+
+```{r}
+exp(coef(fit))
+```
+* aire2 = 1.0400744: La chance de tener estatus de enfermedad en la direccion 1 en vez de en la 4 cuando la contaminacion del aire es alta es 1.05 veces la chance de tener estatus de enfermedad en la direccion 1 en vez de en la 4 cuando la contaminacion del aire es baja.
+
++ Esto quiere decir que las chances para esta variable son practicamente similares, con lo que se refuerza la idea de que el coeficiente beta para la misma no sea significativamente distinto de cero.
+
+```{r}
+exp(-coef(fit)) # cambia la categoria de referencia.
+```
+
+* fumar1/fumar2 = 1.49: La chance de tener estatus de enfermedad en la direccion 1 en vez de en la 4 cuando no es fumador es 1.49 veces la chance de tener estatus de enfermedad en la direccion 1 en vez de en la 4 cuando es ex fumador.
+
+* fumar1/fumar3 = 6.37: La chance de tener estatus de enfermedad en la direccion 1 en vez de en la 4 cuando no es fumador es 6.37 veces la chance de tener estatus de enfermedad en la direccion 1 en vez de en la 4 cuando es actualmente fumador.
+
+* trabajo1/trabajo2 = 2.37: La chance de tener estatus de enfermedad en la direccion 1 en vez de en la 4 cuando no hay contaminacion en el trabajo es 2.37 chance de tener estatus de enfermedad en la direccion 1 en vez de en la 4 cuando hay contaminacion en el trabajo.
+
+
